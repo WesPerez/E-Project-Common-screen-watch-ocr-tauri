@@ -191,6 +191,15 @@ fn scan_watch_config_once(
         .map_err(|err| err.to_string())?;
     let (windows, skipped_windows, skipped_window_apps) = concrete_windows_from_sources(&sources)?;
     if sources.regions.is_empty() && windows.is_empty() {
+        if skipped_windows > 0 || skipped_window_apps > 0 {
+            return Ok(OneShotScanResult {
+                regions: Vec::new(),
+                windows: Vec::new(),
+                hit_count: 0,
+                skipped_windows,
+                skipped_window_apps,
+            });
+        }
         return Err("scan has no resolved screen or window sources".into());
     }
 
@@ -281,9 +290,12 @@ fn start_monitoring_with_config_and_hit_sink(
 
 #[tauri::command]
 fn stop_monitoring_session(
+    window: tauri::Window,
     state: tauri::State<'_, MonitorSessionState>,
 ) -> Result<MonitorSessionSnapshot, String> {
-    state.stop()
+    let snapshot = state.stop()?;
+    tray::update_monitoring_status(window.app_handle(), snapshot.running);
+    Ok(snapshot)
 }
 
 #[tauri::command]

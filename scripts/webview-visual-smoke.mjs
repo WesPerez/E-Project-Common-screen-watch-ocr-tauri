@@ -65,6 +65,7 @@ const gateResults = {
   clipboard: null,
   scan: null,
   legacyProfile: null,
+  legacyLateWindow: null,
   monitoring: null,
   monitoringSoak: null,
   layout: null,
@@ -131,6 +132,10 @@ function ensureDir(dir) {
 
 function gateEnabled(...names) {
   return gateMode === "all" || names.includes(gateMode);
+}
+
+function lateStartGateEnabled() {
+  return gateMode === "legacy-late-window" || gateMode === "legacy-late";
 }
 
 function sleep(ms) {
@@ -1007,6 +1012,28 @@ async function galleryState() {
   }))()`);
 }
 
+const COMPACT_TARGET_CARD_LIMIT = {
+  cardWidth: 96,
+  cardHeight: 96,
+  thumbHeight: 72,
+};
+
+function assertCompactTargetGallery(state, description) {
+  const oversized = (state.cards || []).filter((card) =>
+    card.card?.width > COMPACT_TARGET_CARD_LIMIT.cardWidth ||
+    card.card?.height > COMPACT_TARGET_CARD_LIMIT.cardHeight ||
+    card.thumb?.height > COMPACT_TARGET_CARD_LIMIT.thumbHeight
+  );
+  if (oversized.length > 0) {
+    throw new Error(
+      `${description} target cards are too large: ${JSON.stringify({
+        limit: COMPACT_TARGET_CARD_LIMIT,
+        oversized,
+      })}`,
+    );
+  }
+}
+
 async function monitoringState() {
   return evalJs(`(() => {
     const resultText = document.querySelector('#scan-result')?.textContent || '';
@@ -1637,6 +1664,108 @@ async function runLegacyProfileGate() {
   return result;
 }
 
+async function ensureHelperWindowStarted() {
+  if (!helperProcess || helperProcess.killed) {
+    helperProcess = startHelperWindow();
+    await sleep(1200);
+  }
+  return helperProcess;
+}
+
+async function runLegacyLateWindowGate() {
+  log("running legacy late-start remembered app-window gate");
+  await waitForReadyStatus();
+  await clickSelector("#profile-load");
+  const loadedWithoutWindowState = await waitFor(async () => {
+    const state = await legacyProfileUiState();
+    return state.cards.length === 1 &&
+      state.form.rememberedWindows &&
+      state.form.monitorCheckedCount === 0 &&
+      state.form.selectedWindows.length === 0 &&
+      state.form.intervalMs === "450" &&
+      state.form.cooldown === "0" &&
+      state.form.beep === false
+      ? state
+      : null;
+  }, "legacy profile loaded before remembered app window starts", 25000, 500);
+  await scrollProfileTargetsIntoView();
+  const loadedScreenshot = await captureScreenshot("legacy-late-window-loaded-missing");
+
+  await clickSelector("#profile-scan-once");
+  let lastMissingWindowScanState = null;
+  const missingWindowScanState = await waitFor(async () => {
+    const state = await scanState();
+    lastMissingWindowScanState = state;
+    return state.hitCount === 0 &&
+      state.skippedWindowApps === 1 &&
+      state.status.includes("缺失 1 个应用窗口")
+      ? state
+      : null;
+  }, "legacy remembered app source remains runnable while window is absent", 25000, 500).catch((error) => {
+    throw new Error(
+      `${error.message}; last scan state: ${JSON.stringify(lastMissingWindowScanState)}`,
+    );
+  });
+
+  await ensureHelperWindowStarted();
+  await sleep(1500);
+  const helperAppeared = {
+    pid: helperProcess?.pid || null,
+    title: helperTitle,
+    uiWindowListRefreshed: false,
+  };
+
+  await clickSelector("#profile-scan-once");
+  const scanHitState = await waitFor(async () => {
+    const state = await scanState();
+    const evidence = alertEvidenceState();
+    const profileFile = legacyProfileFileState();
+    return state.hitCount > 0 &&
+      state.windowResultCount > 0 &&
+      state.skippedWindowApps === 0 &&
+      evidence.alertLineCount > 0 &&
+      evidence.screenshotCount > 0 &&
+      evidence.profileHitCounts.some((count) => count > 0) &&
+      profileFile.legacyProfileNote === "preserve profile fields" &&
+      profileFile.legacyTargetNote === "preserve target fields"
+      ? { state, evidence, profileFile }
+      : null;
+  }, "legacy remembered app scan resolves late-start window without reselecting", 30000, 500);
+  await scrollProfileTargetsIntoView();
+  const scanScreenshot = await captureScreenshot("legacy-late-window-scan-hit");
+
+  await clickSelector("#profile-monitor-start");
+  const monitorStartState = await waitForMonitoringStart(
+    "legacy remembered app monitoring resolves late-start window",
+  );
+  const monitorProgressState = await waitFor(async () => {
+    const state = await monitoringState();
+    return state.progressRows.length >= 2 &&
+      state.tickCount > monitorStartState.tickCount &&
+      state.hitCount > monitorStartState.hitCount &&
+      state.session?.skippedWindowApps === 0
+      ? state
+      : null;
+  }, "legacy late-start monitoring progress rows", 20000, 500);
+  const monitorScreenshot = await captureScreenshot("legacy-late-window-monitoring");
+  const monitorStopState = await stopMonitoringFromUi("legacy late-start monitoring stop");
+
+  const result = {
+    status: "pass",
+    fixture: stageLegacyFixture,
+    loadedWithoutWindowState,
+    missingWindowScanState,
+    helperAppeared,
+    scanHitState,
+    monitorStartState,
+    monitorProgressState,
+    monitorStopState,
+    screenshots: [loadedScreenshot, scanScreenshot, monitorScreenshot],
+  };
+  gateResults.legacyLateWindow = result;
+  return result;
+}
+
 async function runOneShotScanGate() {
   log("running profile one-shot scan gate");
   await waitForReadyStatus();
@@ -2119,6 +2248,7 @@ async function runClipboardPasteGate() {
       const lastState = await galleryState();
       throw new Error(`${error.message}; last gallery state: ${JSON.stringify(lastState)}`);
     }
+    assertCompactTargetGallery(imagePasteState, "clipboard bitmap paste");
     await scrollProfileTargetsIntoView();
     const imagePasteScreenshot = await captureScreenshot("profile-clipboard-image-paste");
 
@@ -2150,6 +2280,7 @@ async function runClipboardPasteGate() {
       const lastState = await galleryState();
       throw new Error(`${error.message}; last gallery state: ${JSON.stringify(lastState)}`);
     }
+    assertCompactTargetGallery(fileDropPasteState, "clipboard file-list paste");
     await scrollProfileTargetsIntoView();
     const fileDropPasteScreenshot = await captureScreenshot("profile-clipboard-file-paste");
 
@@ -2161,6 +2292,7 @@ async function runClipboardPasteGate() {
       imagePasteState,
       fileClipboardState,
       fileDropPasteState,
+      compactTargetCardLimit: COMPACT_TARGET_CARD_LIMIT,
       screenshots: [imagePasteScreenshot, fileDropPasteScreenshot],
     };
     gateResults.clipboard = result;
@@ -2214,6 +2346,25 @@ function writeEvidenceRecords(summary) {
         ],
         remainingRisk:
           "proves old Python-shaped profile data works when the remembered app window is present at Tauri startup; a separate late-start remembered-app gate is still needed for apps launched after Tauri has already loaded the profile",
+      }),
+      "utf8",
+    );
+  }
+  if (summary.gates.legacyLateWindow?.status === "pass") {
+    fs.writeFileSync(
+      path.join(evidenceDir, "legacy-late-window-e2e-smoke.md"),
+      evidenceRecord({
+        gateTitle: "Legacy Late-Start Window End-to-End Smoke",
+        status: "pass",
+        observed:
+          "automated real WebView2/CDP smoke staged a Python-shaped profile_1.json before launch while the remembered app window was absent; verified scan was still runnable and reported the missing remembered app instead of losing the source; started the remembered app window after Tauri had loaded the profile; then scanned and monitored without reselecting the window, producing positive hit/evidence/profile updates",
+        evidenceFiles: [
+          resultPath,
+          appLogPath,
+          ...summary.gates.legacyLateWindow.screenshots,
+        ],
+        remainingRisk:
+          "proves late-start recovery for one generated remembered app window on this Windows desktop; broad third-party window capture behavior still depends on OS/window-class support",
       }),
       "utf8",
     );
@@ -2362,8 +2513,10 @@ async function main() {
   ensureDir(localAppData);
   fs.writeFileSync(appLogPath, `webview visual smoke ${runStamp}\n`, "utf8");
 
-  helperProcess = startHelperWindow();
-  if (gateEnabled("legacy-profile")) {
+  if (!lateStartGateEnabled()) {
+    helperProcess = startHelperWindow();
+  }
+  if (gateEnabled("legacy-profile") || lateStartGateEnabled()) {
     stageLegacyFixture = stageLegacyProfileFixture();
   }
   appProcess = startApp();
@@ -2379,6 +2532,9 @@ async function main() {
 
   if (gateEnabled("legacy-profile")) {
     await runLegacyProfileGate();
+  }
+  if (lateStartGateEnabled()) {
+    await runLegacyLateWindowGate();
   }
   if (gateEnabled("source")) {
     await runSourcePreviewGate();
@@ -2430,6 +2586,7 @@ async function main() {
     clipboard: gateResults.clipboard?.status || "skipped",
     scan: gateResults.scan?.status || "skipped",
     legacyProfile: gateResults.legacyProfile?.status || "skipped",
+    legacyLateWindow: gateResults.legacyLateWindow?.status || "skipped",
     monitoring: gateResults.monitoring?.status || "skipped",
     monitoringSoak: gateResults.monitoringSoak?.status || "skipped",
     layout: gateResults.layout?.status || "skipped",

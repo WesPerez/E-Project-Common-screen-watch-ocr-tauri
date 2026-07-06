@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   applyCheckIndicatorScale,
   buildProfileSourceOptions,
+  buildRememberedWindowAppConfigs,
   buildSelectedPreviewSources,
   buildSelectedRegionConfigs,
   buildSelectedWindowAppConfigs,
@@ -16,6 +17,7 @@ import {
   layoutBusy,
   monitoringEventFreshness,
   monitoringEventTransition,
+  monitoringHeartbeatLogText,
   monitoringProgressLogText,
   monitoringSessionGeneration,
   monitoringStatusText,
@@ -65,6 +67,7 @@ let currentProfile = null;
 let legacyMaxAlerts = null;
 let selectedMonitorIndexes = new Set();
 let selectedWindowHandles = new Set();
+let rememberedWindowApps = [];
 let draggedTargetIndex = null;
 let targetContextMenu = null;
 let unlistenMonitorSession = null;
@@ -371,6 +374,16 @@ function appendMonitoringProgressLog(snapshot = {}, payload = {}, options = {}) 
   return true;
 }
 
+function appendMonitoringHeartbeatLog(snapshot = {}, options = {}) {
+  const now = Date.now();
+  if (!options.force && now - monitorHeartbeatLastWaitingLog < MONITOR_HEARTBEAT_MS - 50) {
+    return false;
+  }
+  monitorHeartbeatLastWaitingLog = now;
+  appendLog(monitoringHeartbeatLogText(snapshot));
+  return true;
+}
+
 async function pollMonitoringHeartbeat() {
   if (!monitoringActive) {
     stopMonitoringHeartbeat();
@@ -421,10 +434,7 @@ async function pollMonitoringHeartbeat() {
       appendMonitoringProgressLog(session, {}, { forceFirst: true });
       return;
     }
-    if (now - monitorHeartbeatLastWaitingLog >= MONITOR_HEARTBEAT_MS - 50) {
-      appendLog(`等待本轮扫描完成（已完成 ${tickCount} 轮）`);
-      monitorHeartbeatLastWaitingLog = now;
-    }
+    appendMonitoringHeartbeatLog(session);
   } catch (error) {
     if (generation === monitoringUiGeneration) {
       status.textContent = String(error);
@@ -904,6 +914,7 @@ async function refreshWindows() {
     selectedWindowHandles = new Set(
       [...selectedWindowHandles].filter((hwnd) => availableHandles.has(hwnd)),
     );
+    restoreRememberedWindowSelections();
     renderWindowList();
     renderSourcePreviewPlaceholders();
     scheduleSourcePreviews(0);
@@ -934,8 +945,10 @@ function renderWindowSource(window) {
   checkbox.addEventListener("change", () => {
     if (checkbox.checked) {
       selectedWindowHandles.add(hwnd);
+      rememberWindowApp(window);
     } else {
       selectedWindowHandles.delete(hwnd);
+      forgetWindowApp(window);
     }
     renderSourcePreviewPlaceholders();
     scheduleSourcePreviews(0);
@@ -1296,14 +1309,79 @@ function selectedWindowAppConfigs() {
   });
 }
 
+function windowAppFromRecord(window) {
+  const title = String(window?.title || "").trim();
+  if (!title) {
+    return null;
+  }
+  const ordinal = Math.max(1, Math.trunc(Number(window.ordinal || 1)));
+  return { title, ordinal };
+}
+
+function windowAppKey(app) {
+  const normalized = windowAppFromRecord(app);
+  return normalized ? `${normalized.title}\0${normalized.ordinal}` : "";
+}
+
+function rememberWindowApp(window) {
+  if (!useRememberedWindowApps()) {
+    return;
+  }
+  const app = windowAppFromRecord(window);
+  if (!app) {
+    return;
+  }
+  const byKey = new Map(rememberedWindowApps.map((item) => [windowAppKey(item), item]));
+  byKey.set(windowAppKey(app), app);
+  rememberedWindowApps = [...byKey.values()];
+}
+
+function forgetWindowApp(window) {
+  if (!useRememberedWindowApps()) {
+    return;
+  }
+  const key = windowAppKey(window);
+  if (!key) {
+    return;
+  }
+  rememberedWindowApps = rememberedWindowApps.filter(
+    (item) => windowAppKey(item) !== key,
+  );
+}
+
+function rememberSelectedWindowApps() {
+  const byKey = new Map(rememberedWindowApps.map((item) => [windowAppKey(item), item]));
+  for (const app of selectedWindowAppConfigs()) {
+    const key = windowAppKey(app);
+    if (key) {
+      byKey.set(key, app);
+    }
+  }
+  rememberedWindowApps = [...byKey.values()];
+}
+
+function restoreRememberedWindowSelections() {
+  if (!useRememberedWindowApps() || rememberedWindowApps.length === 0) {
+    return;
+  }
+  const rememberedKeys = new Set(rememberedWindowApps.map(windowAppKey));
+  currentWindows
+    .filter((window) => rememberedKeys.has(profileWindowKey(window)))
+    .forEach((window) => selectedWindowHandles.add(String(window.hwnd)));
+}
+
 function useRememberedWindowApps() {
   return document.querySelector("#profile-use-remembered-windows").checked;
 }
 
 function buildProfileOptions() {
+  if (useRememberedWindowApps()) {
+    rememberSelectedWindowApps();
+  }
   const sourceOptions = buildProfileSourceOptions({
     monitors: currentMonitors,
     region: profileRegionInputs(),
+    rememberedWindowApps,
     rememberedWindows: useRememberedWindowApps(),
     selectedMonitorIndexes,
     selectedWindowHandles,
@@ -1401,6 +1479,11 @@ function applyProfileSources(profileData) {
         ? profileData.windows.map(profileWindowKey).filter(Boolean)
         : [],
     );
+    rememberedWindowApps = Array.isArray(profileData.windows)
+      ? buildRememberedWindowAppConfigs({
+          rememberedWindowApps: profileData.windows,
+        })
+      : [];
     selectedWindowHandles = new Set(
       currentWindows
         .filter((window) => savedWindowKeys.has(profileWindowKey(window)))
@@ -1532,6 +1615,7 @@ async function startMonitoring() {
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     appendLog("监控中");
+    appendMonitoringHeartbeatLog(session, { force: true });
     updateRunControls();
   } catch (error) {
     result.textContent = String(error);
@@ -2257,6 +2341,7 @@ async function startProfileMonitoring() {
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     appendLog("监控中");
+    appendMonitoringHeartbeatLog(session, { force: true });
     updateRunControls();
   } catch (error) {
     const message = monitoringStartErrorText(error);
@@ -2356,7 +2441,12 @@ document
   .addEventListener("change", switchProfile);
 document
   .querySelector("#profile-use-remembered-windows")
-  .addEventListener("change", persistProfileSources);
+  .addEventListener("change", (event) => {
+    if (event.target.checked) {
+      rememberSelectedWindowApps();
+    }
+    persistProfileSources();
+  });
 [
   "#profile-region-left",
   "#profile-region-top",

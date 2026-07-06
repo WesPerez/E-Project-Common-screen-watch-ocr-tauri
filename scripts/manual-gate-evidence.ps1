@@ -67,6 +67,10 @@ function Get-ManualGateDefinitions {
             Title = "Legacy Profile End-to-End Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "legacy-late-window-e2e-smoke"
+            Title = "Legacy Late-Start Window End-to-End Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "profile-monitoring-restart-smoke"
             Title = "Profile Monitoring Restart Smoke"
         },

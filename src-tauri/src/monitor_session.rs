@@ -124,11 +124,7 @@ impl MonitorSessionState {
             return Err("monitoring session has no screen or window sources".to_string());
         }
         self.reap_finished_worker()?;
-        if self.request_stop_current_worker(START_STOP_JOIN_GRACE)? {
-            return Err(
-                "previous monitoring session is still stopping; try again in a moment".to_string(),
-            );
-        }
+        self.request_stop_current_worker(START_STOP_JOIN_GRACE, false)?;
 
         let poll_interval = poll_interval_duration(config.poll_interval_seconds);
         let settings = OcrSettings::from_env();
@@ -198,7 +194,7 @@ impl MonitorSessionState {
     }
 
     pub fn stop(&self) -> Result<MonitorSessionSnapshot, String> {
-        self.request_stop_current_worker(STOP_JOIN_GRACE)?;
+        self.request_stop_current_worker(STOP_JOIN_GRACE, true)?;
         self.snapshot()
     }
 
@@ -210,7 +206,11 @@ impl MonitorSessionState {
             .map_err(|_| "monitor session snapshot is poisoned".to_string())
     }
 
-    fn request_stop_current_worker(&self, join_grace: Duration) -> Result<bool, String> {
+    fn request_stop_current_worker(
+        &self,
+        join_grace: Duration,
+        retain_stopping_worker: bool,
+    ) -> Result<bool, String> {
         let worker = self
             .worker
             .lock()
@@ -221,10 +221,13 @@ impl MonitorSessionState {
             worker.stop.store(true, Ordering::SeqCst);
             if let Some(worker) = join_worker_if_finished(worker, join_grace)? {
                 still_stopping = true;
-                *self
-                    .worker
-                    .lock()
-                    .map_err(|_| "monitor session worker is poisoned".to_string())? = Some(worker);
+                if retain_stopping_worker {
+                    *self
+                        .worker
+                        .lock()
+                        .map_err(|_| "monitor session worker is poisoned".to_string())? =
+                        Some(worker);
+                }
             }
         }
         mark_stopped(&self.snapshot)?;
@@ -622,7 +625,7 @@ mod tests {
         MonitorWorker, MIN_POLL_INTERVAL, START_STOP_JOIN_GRACE,
     };
     use screen_watch_core::{
-        config::{WatchConfig, WindowConfig},
+        config::{WatchConfig, WindowAppConfig, WindowConfig},
         detect::Match,
         scan::ScanFrameResult,
         sources::{BBox, ResolvedRegion},
@@ -702,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn start_reports_previous_worker_that_is_still_stopping() {
+    fn start_replaces_previous_worker_that_is_still_stopping() {
         let stop = Arc::new(AtomicBool::new(false));
         let thread_stop = Arc::clone(&stop);
         let handle = thread::spawn(move || {
@@ -729,22 +732,27 @@ mod tests {
         )
         .unwrap();
 
-        let err = session
+        let status = session
             .start_sources_with_events(
                 config,
                 std::env::temp_dir(),
-                vec![resolved_region("screen")],
                 Vec::new(),
                 Vec::new(),
+                vec![WindowAppConfig {
+                    title: "missing app window".to_string(),
+                    ordinal: 1,
+                    extra: Default::default(),
+                }],
                 AlarmBeepState::default(),
                 None,
                 Arc::new(TestEventSink),
             )
-            .unwrap_err();
+            .unwrap();
 
-        assert!(err.contains("still stopping"));
-        assert!(!session.snapshot().unwrap().running);
+        assert!(status.running);
+        assert!(status.generation > 1);
         assert!(session.worker.lock().unwrap().is_some());
+        assert!(!session.stop().unwrap().running);
     }
 
     #[test]

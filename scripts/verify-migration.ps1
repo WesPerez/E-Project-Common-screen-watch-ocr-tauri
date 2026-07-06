@@ -543,6 +543,7 @@ function Assert-PackageScriptContract {
         "webview:monitoring:smoke" = "node scripts/webview-visual-smoke.mjs --gate monitoring"
         "webview:monitoring:soak" = "node scripts/webview-visual-smoke.mjs --gate monitoring-soak"
         "webview:legacy-profile:smoke" = "node scripts/webview-visual-smoke.mjs --gate legacy-profile"
+        "webview:legacy-late-window:smoke" = "node scripts/webview-visual-smoke.mjs --gate legacy-late-window"
         "webview:layout:smoke" = "node scripts/webview-visual-smoke.mjs --gate layout"
         "package:portable:lite" = "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor lite"
         "package:portable:full" = "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor full"
@@ -849,6 +850,7 @@ function Assert-ManualGateRunbookContract {
             "## Profile Clipboard Paste Smoke",
             "## Profile One Shot Scan Smoke",
             "## Legacy Profile End-to-End Smoke",
+            "## Legacy Late-Start Window End-to-End Smoke",
             "## Profile Monitoring Restart Smoke",
             "## Profile Monitoring Soak Smoke",
             "## WebView Layout Resize Smoke",
@@ -871,6 +873,7 @@ function Assert-ManualGateRunbookContract {
             'npm run webview:clipboard:smoke',
             'npm run webview:scan:smoke',
             'npm run webview:legacy-profile:smoke',
+            'npm run webview:legacy-late-window:smoke',
             'npm run webview:monitoring:smoke',
             'npm run webview:monitoring:soak',
             'npm run webview:monitoring:soak -- --soak-ms 30000',
@@ -898,6 +901,7 @@ function Assert-ManualGateRunbookContract {
             'CF_DIB bitmap paste and CF_HDROP image-file paste',
             'alerts.jsonl plus screenshot evidence',
             'Python-shaped profile_1.json',
+            'late-start remembered app window',
             'start/stop/restart monitoring',
             'target/settings splitter',
             'packagedSmokeVerified: True',

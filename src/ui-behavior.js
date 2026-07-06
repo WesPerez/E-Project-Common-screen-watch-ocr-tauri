@@ -424,12 +424,46 @@ export function buildSelectedWindowAppConfigs(state = {}) {
   );
 }
 
+function windowAppKey(app = {}) {
+  const title = String(app.title || "").trim();
+  if (!title) {
+    return "";
+  }
+  const ordinal = Math.max(1, Math.trunc(Number(app.ordinal || 1)));
+  return `${title}\0${ordinal}`;
+}
+
+function normalizedWindowApp(app = {}) {
+  const title = String(app.title || "").trim();
+  if (!title) {
+    return null;
+  }
+  return {
+    title,
+    ordinal: Math.max(1, Math.trunc(Number(app.ordinal || 1))),
+  };
+}
+
+export function buildRememberedWindowAppConfigs(state = {}) {
+  const byKey = new Map();
+  const add = (app) => {
+    const normalized = normalizedWindowApp(app);
+    if (!normalized) {
+      return;
+    }
+    byKey.set(windowAppKey(normalized), normalized);
+  };
+  (state.rememberedWindowApps || []).forEach(add);
+  buildSelectedWindowAppConfigs(state).forEach(add);
+  return [...byKey.values()];
+}
+
 export function buildProfileSourceOptions(state = {}) {
   const rememberedWindows = Boolean(state.rememberedWindows);
   return {
     regions: buildSelectedRegionConfigs(state),
     windows: rememberedWindows ? [] : buildSelectedWindowConfigs(state),
-    windowApps: rememberedWindows ? buildSelectedWindowAppConfigs(state) : [],
+    windowApps: rememberedWindows ? buildRememberedWindowAppConfigs(state) : [],
   };
 }
 
@@ -638,6 +672,18 @@ export function monitoringProgressLogText(snapshot = {}, options = {}) {
     parts.push(tickError);
   }
   return parts.join("，");
+}
+
+export function monitoringHeartbeatLogText(snapshot = {}) {
+  const tickCount = countFromEitherCase(snapshot, "tickCount", "tick_count");
+  const hitCount = countFromEitherCase(snapshot, "hitCount", "hit_count");
+  const regionCount = countFromEitherCase(snapshot, "regionCount", "region_count");
+  const windowCount = countFromEitherCase(snapshot, "windowCount", "window_count");
+  return [
+    `监控心跳：已完成 ${tickCount} 轮`,
+    `扫描 ${regionCount} 屏 / ${windowCount} 应用`,
+    `累计命中 ${hitCount}`,
+  ].join("，");
 }
 
 export function monitoringSessionGeneration(snapshot = {}) {

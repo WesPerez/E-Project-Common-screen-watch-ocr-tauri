@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyCheckIndicatorScale,
   buildProfileSourceOptions,
+  buildRememberedWindowAppConfigs,
   buildSelectedPreviewSources,
   buildSelectedRegionConfigs,
   buildSelectedWindowAppConfigs,
@@ -22,6 +23,7 @@ import {
   monitorErrorSummary,
   monitoringEventFreshness,
   monitoringEventTransition,
+  monitoringHeartbeatLogText,
   monitoringProgressLogText,
   monitoringSessionGeneration,
   monitoringStatusText,
@@ -745,6 +747,56 @@ test("profile source options can persist remembered app windows instead of hwnds
   });
 });
 
+test("profile source options preserve remembered apps that are not currently listed", () => {
+  const state = {
+    rememberedWindows: true,
+    rememberedWindowApps: [
+      {
+        title: "Late App",
+        ordinal: 2,
+      },
+      {
+        title: "Logs",
+        ordinal: 3,
+      },
+    ],
+    selectedWindowHandles: new Set(["44"]),
+    windows: [
+      {
+        display: "Logs #3",
+        hwnd: 44,
+        ordinal: 3,
+        title: "Logs",
+      },
+    ],
+  };
+
+  assert.deepEqual(buildRememberedWindowAppConfigs(state), [
+    {
+      ordinal: 2,
+      title: "Late App",
+    },
+    {
+      ordinal: 3,
+      title: "Logs",
+    },
+  ]);
+  assert.deepEqual(buildProfileSourceOptions(state), {
+    regions: [],
+    windowApps: [
+      {
+        ordinal: 2,
+        title: "Late App",
+      },
+      {
+        ordinal: 3,
+        title: "Logs",
+      },
+    ],
+    windows: [],
+  });
+});
+
 test("profile source option presence accepts any source family", () => {
   assert.equal(profileSourceOptionsHaveSources({}), false);
   assert.equal(profileSourceOptionsHaveSources({ regions: [{}] }), true);
@@ -1028,6 +1080,18 @@ test("monitoring progress log text reports heartbeat tick details", () => {
       },
     ),
     "第 8 轮，扫描 2 屏 / 1 应用，本轮命中 3，累计命中 12，capture failed",
+  );
+});
+
+test("monitoring heartbeat log text reports running status without a new tick", () => {
+  assert.equal(
+    monitoringHeartbeatLogText({
+      hitCount: 4,
+      regionCount: 1,
+      tickCount: 0,
+      windowCount: 2,
+    }),
+    "监控心跳：已完成 0 轮，扫描 1 屏 / 2 应用，累计命中 4",
   );
 });
 

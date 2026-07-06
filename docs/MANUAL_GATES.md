@@ -81,9 +81,9 @@ Expected evidence:
 - `liteSizeGate: passed`.
 - `requiredRealGates: 19 workspace gates, 2 OCR gates`.
 - `manualGateEvidenceStatus:` includes the profile clipboard paste, profile
-  one-shot scan, legacy profile end-to-end, profile monitoring restart, profile
-  monitoring soak, and WebView layout resize gates plus packaged app and
-  packaged tray gates when validating final evidence.
+  one-shot scan, legacy profile end-to-end, legacy late-start window, profile
+  monitoring restart, profile monitoring soak, and WebView layout resize gates
+  plus packaged app and packaged tray gates when validating final evidence.
 
 ## Desktop Backend Smoke
 
@@ -306,6 +306,43 @@ Expected evidence:
   `ScreenWatchOCR` data directory.
 - Profile JSON showing the matching target `hit_count` increased while unknown
   top-level/target fields are preserved.
+
+## Legacy Late-Start Window End-to-End Smoke
+
+Repeatable automated evidence can be collected against the current packaged
+release exe on an interactive Windows desktop:
+
+```powershell
+npm run webview:legacy-late-window:smoke
+```
+
+Manual fallback steps:
+
+- Stage a Python-shaped profile_1.json with one remembered app window, but do
+  not start that app window before launching Tauri.
+- Start the Tauri app and confirm the old profile loads with one enabled target,
+  no selected monitors, remembered-window mode enabled, and no visible selected
+  app row because the app is still absent.
+- Click `扫描一次` before launching the app and confirm it reports the late-start
+  remembered app window as missing instead of losing the source or blocking with
+  no-source text.
+- Start the remembered app window after Tauri has already loaded the profile.
+- Without refreshing the window list or reselecting the app, click `扫描一次` and
+  confirm a positive window-source hit, alert JSONL/screenshot evidence, and
+  profile `hit_count` update.
+- Click `开始监控`, confirm progress rows and positive hit/tick counts, then stop
+  monitoring cleanly.
+
+Expected evidence:
+
+- Result JSON proving the Python-shaped profile was staged before launch while
+  the remembered app was absent.
+- Evidence that the first scan reports the late-start remembered app window as
+  missing.
+- Evidence that the app is launched after Tauri load and `uiWindowListRefreshed`
+  remains false before the successful scan/monitoring path.
+- alerts.jsonl plus screenshot evidence written under the isolated
+  `ScreenWatchOCR` data directory.
 
 ## Profile Monitoring Soak Smoke
 
