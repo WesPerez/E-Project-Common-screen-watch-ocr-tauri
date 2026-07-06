@@ -80,8 +80,9 @@ Expected evidence:
 - `rustCoreTests`, `tauriTests`, and `ocrFeatureTests` meet current baselines.
 - `liteSizeGate: passed`.
 - `requiredRealGates: 19 workspace gates, 2 OCR gates`.
-- `manualGateEvidenceStatus:` includes the profile monitoring restart and
-  WebView layout resize gates when validating final evidence.
+- `manualGateEvidenceStatus:` includes the profile one-shot scan, profile
+  monitoring restart, and WebView layout resize gates when validating final
+  evidence.
 
 ## Desktop Backend Smoke
 
@@ -191,6 +192,33 @@ Expected evidence:
 - Thumbnails have stable dimensions and no bottom-border clipping.
 - Drag/drop and row-button reorder produce the expected order.
 - Only template files under `templates\` are removed by delete/clear actions.
+
+## Profile One Shot Scan Smoke
+
+Repeatable automated evidence can be collected against the current packaged
+release exe on an interactive Windows desktop:
+
+```powershell
+npm run webview:scan:smoke
+```
+
+Manual fallback steps:
+
+- Select one stable app-window source and no screen source.
+- Capture that source as a template.
+- Click `扫描一次`.
+- Confirm the UI reports a positive hit count and appends a scan result row to
+  the log table.
+- Confirm the target hit badge/profile hit count updates.
+
+Expected evidence:
+
+- Screenshot or video before the scan and after the hit.
+- Result JSON proving a positive one-shot `hitCount`, zero skipped selected
+  window sources, and at least one window scan result.
+- alerts.jsonl plus screenshot evidence written under the isolated
+  `ScreenWatchOCR` data directory.
+- Profile JSON showing the matching target `hit_count` increased.
 
 ## Profile Monitoring Restart Smoke
 

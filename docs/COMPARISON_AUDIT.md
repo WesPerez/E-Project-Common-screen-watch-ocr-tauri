@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 04:03 +08:00
+Last updated: 2026-07-07 04:20 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -45,12 +45,12 @@ Everything else is separated so old and new processes do not collide:
 | Desktop smoke | 16 real Windows desktop gates passed |
 | Packaged smoke | start-minimized, legacy migration, geometry restore, close-to-tray, second-instance wake passed |
 | Tray menu smoke | Tauri-owned native menu `Show Tauri` and `Exit Tauri` passed, exit code 0 |
-| WebView visual smoke | source preview, gallery workflow, profile-monitoring restart, and layout resize passed; thumbnails measured 75x48; monitoring restart recorded first run 10 ticks/10 hits and second run 5 ticks/5 hits; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, control-group +58px |
+| WebView visual smoke | source preview, gallery workflow, profile one-shot scan, profile-monitoring restart, and layout resize passed in one packaged WebView2 run; one-shot scan recorded hitCount 1, 0 skipped selected window sources, alerts.jsonl 1 line, screenshot evidence 1 file, and profile hit_count 1; thumbnails measured 75x48; monitoring restart recorded first run 2 ticks/2 hits with 3 progress rows and second run 4 ticks/4 hits; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, control-group +58px |
 | Portable package verification | lite portable 1,612,062 bytes and full portable 3,749,839 bytes content-verified after `cc7034d` |
 | Template benchmark | 2560x1440, 8 templates: flat 65ms 8/8, textured 432ms 8/8 |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 8579ms recorded |
 | Real OCR smoke | external PP-OCRv5 English models initialized; READY PNG recognized |
-| Manual evidence status | 10 pass, 0 blocked, 0 fail, 0 missing |
+| Manual evidence status | 11 pass, 0 blocked, 0 fail, 0 missing |
 
 ## Feature Matrix
 
@@ -69,13 +69,13 @@ Everything else is separated so old and new processes do not collide:
 | OCR target detection | Partially proven | text-row core tests, real PP-OCRv5 English READY smoke | Chinese accuracy, PP-OCRv6/RapidOCR-native compatibility, broad OCR quality are future validation items |
 | Screen source listing and mss-style monitor indexes | Proven | desktop monitor-listing smoke | Exotic multi-monitor DPI/topology combinations still need spot checks |
 | App-window listing, duplicate ordinals, remembered apps | Proven | window source tests, desktop remembered-window gates | Apps that refuse capture remain an OS/window limitation |
-| Screen capture and one-shot scan evidence | Proven | desktop screen capture and one-shot scan gates | None known |
+| Screen capture and one-shot scan evidence | Proven | desktop screen capture and one-shot scan gates; packaged WebView profile one-shot scan smoke drives the visible `扫描一次` button and verifies hit/evidence/profile updates | None known for current generated screen/window sources |
 | Window capture with black PrintWindow fallback | Proven | capture tests and desktop window gates | Some GPU/minimized windows may still be uninspectable |
 | Source preview with DWM handoff and bitmap fallback | Proven | source-preview tests, real DWM gate, WebView visual smoke | Every third-party window class is not exhaustively covered |
 | Persistent monitoring start/stop/status | Proven | monitor session tests, desktop monitoring gates, packaged WebView monitoring restart smoke | Long-duration soak beyond smoke length not yet recorded |
 | Stop then start monitoring again | Proven | frontend monitoring state tests, desktop gates, packaged WebView monitoring restart smoke with button restored to `开始监控` after both stops | Long manual UI soak still useful before production use |
 | Tick/event logs while monitoring | Proven | frontend tests, `monitor-session` contract, packaged WebView smoke progress rows (`第 N 轮...累计命中...`) | Log cadence depends on capture speed and configured interval |
-| Alert screenshots, JSONL, cooldown, pruning | Proven | evidence/scan tests and one-shot desktop gates | Full UI evidence browsing is not a separate gate |
+| Alert screenshots, JSONL, cooldown, pruning | Proven | evidence/scan tests, one-shot desktop gates, and packaged WebView one-shot scan smoke checking `alerts.jsonl` plus screenshot output | Full UI evidence browsing is not a separate gate |
 | Beep behavior and throttling | Proven | audio tests and Tauri beep state tests | Actual speaker output is not recorded in smoke |
 | Resizable layout splitters | Proven | frontend layout tests for three-pane and stacked layouts; packaged WebView layout smoke drags the target/settings splitter, settings/preview splitter, target-list/log splitter, and a native vertical control-group resize handle with measured deltas and no horizontal overflow | Very narrow/mobile layouts are covered by responsive CSS and static tests, not exhaustive visual smoke |
 | Smaller image thumbnails | Proven | WebView visual smoke measured target thumbs 75x48 | None known |

@@ -55,6 +55,10 @@ function Get-ManualGateDefinitions {
             Title = "Template Gallery Visual Workflow Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "profile-one-shot-scan-smoke"
+            Title = "Profile One Shot Scan Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "profile-monitoring-restart-smoke"
             Title = "Profile Monitoring Restart Smoke"
         },

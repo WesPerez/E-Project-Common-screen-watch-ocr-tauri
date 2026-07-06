@@ -54,6 +54,7 @@ const screenshots = [];
 const gateResults = {
   source: null,
   gallery: null,
+  scan: null,
   monitoring: null,
   layout: null,
 };
@@ -628,6 +629,8 @@ async function galleryState() {
       selected: card.classList.contains('is-selected'),
       hasImage: card.querySelector('.target-thumb')?.classList.contains('has-image') || false,
       hasBottomBorder: getComputedStyle(card).borderBottomWidth !== '0px',
+      hitText: card.querySelector('.target-hit-badge')?.textContent || '',
+      hitCount: Number(card.querySelector('.target-hit-badge')?.textContent || 0),
       thumb: {
         width: Math.round(card.querySelector('.target-thumb')?.getBoundingClientRect().width || 0),
         height: Math.round(card.querySelector('.target-thumb')?.getBoundingClientRect().height || 0),
@@ -660,6 +663,39 @@ async function monitoringState() {
       tickCount: Number(session?.tickCount || session?.tick_count || 0),
       hitCount: Number(session?.hitCount || session?.hit_count || 0),
       running: Boolean(session?.running),
+    };
+  })()`);
+}
+
+async function scanState() {
+  return evalJs(`(() => {
+    const resultText = document.querySelector('#scan-result')?.textContent || '';
+    let scan = null;
+    try {
+      scan = resultText.trim() ? JSON.parse(resultText) : null;
+    } catch (_error) {
+      scan = null;
+    }
+    const rows = [...document.querySelectorAll('#event-log tr')].map((row) => row.textContent || '');
+    const cards = [...document.querySelectorAll('.target-card')].map((card, index) => ({
+      index,
+      title: card.querySelector('.target-text strong')?.textContent || '',
+      hitText: card.querySelector('.target-hit-badge')?.textContent || '',
+      hitCount: Number(card.querySelector('.target-hit-badge')?.textContent || 0),
+      selected: card.classList.contains('is-selected'),
+      hasImage: card.querySelector('.target-thumb')?.classList.contains('has-image') || false,
+    }));
+    return {
+      status: document.querySelector('#status')?.textContent || '',
+      logRows: rows,
+      scanRows: rows.filter((text) => text.includes('Ready -') && text.includes('hits')),
+      scan,
+      hitCount: Number(scan?.hitCount || scan?.hit_count || 0),
+      skippedWindows: Number(scan?.skippedWindows || scan?.skipped_windows || 0),
+      skippedWindowApps: Number(scan?.skippedWindowApps || scan?.skipped_window_apps || 0),
+      windowResultCount: Array.isArray(scan?.windows) ? scan.windows.length : 0,
+      regionResultCount: Array.isArray(scan?.regions) ? scan.regions.length : 0,
+      cards,
     };
   })()`);
 }
@@ -977,6 +1013,38 @@ function profilePath() {
   return path.join(localAppData, "ScreenWatchOCR", "profiles", "profile_1.json");
 }
 
+function alertEvidenceState() {
+  const dataDir = path.join(localAppData, "ScreenWatchOCR");
+  const alertsPath = path.join(dataDir, "alerts.jsonl");
+  const screenshotsDir = path.join(dataDir, "screenshots");
+  const alertLines = fs.existsSync(alertsPath)
+    ? fs.readFileSync(alertsPath, "utf8").split(/\r?\n/).filter(Boolean)
+    : [];
+  const screenshots = fs.existsSync(screenshotsDir)
+    ? fs.readdirSync(screenshotsDir).filter((name) => name.toLowerCase().endsWith(".png"))
+    : [];
+  let profileTargets = [];
+  if (fs.existsSync(profilePath())) {
+    try {
+      const profile = JSON.parse(fs.readFileSync(profilePath(), "utf8"));
+      profileTargets = Array.isArray(profile.targets) ? profile.targets : [];
+    } catch (_error) {
+      profileTargets = [];
+    }
+  }
+  return {
+    alertsPath,
+    screenshotsDir,
+    alertLineCount: alertLines.length,
+    alertLines,
+    screenshotCount: screenshots.length,
+    screenshots,
+    profileHitCounts: profileTargets.map((target) =>
+      Number(target.hit_count ?? target.hitCount ?? 0),
+    ),
+  };
+}
+
 function setFirstTargetHitCount(count) {
   const file = profilePath();
   const profile = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -1048,6 +1116,58 @@ async function stopMonitoringFromUi(description) {
       ? state
       : null;
   }, description, 20000, 300);
+}
+
+async function runOneShotScanGate() {
+  log("running profile one-shot scan gate");
+  await waitForReadyStatus();
+  await clickSelector("#refresh-windows");
+  await waitForReadyStatus();
+  const selected = await waitFor(async () => {
+    const result = await selectOnlyHelperWindowSource();
+    return result.ok ? result : null;
+  }, "exclusive helper window source for one-shot scan", 20000, 500);
+  await setMonitoringSmokeInputs();
+  await clearAllProfileTargetsForSmoke();
+  await clickSelector("#profile-capture-target");
+  const capturedTargetState = await waitForCardCount(1);
+  await scrollProfileTargetsIntoView();
+  const preparedScreenshot = await captureScreenshot("profile-one-shot-scan-prepared");
+
+  await clickSelector("#profile-scan-once");
+  const hitState = await waitFor(async () => {
+    const state = await scanState();
+    const cardHit = state.cards.some((card) => card.hitCount > 0);
+    return state.hitCount > 0 &&
+      state.windowResultCount > 0 &&
+      state.skippedWindows === 0 &&
+      state.skippedWindowApps === 0 &&
+      state.scanRows.length > 0 &&
+      cardHit
+      ? state
+      : null;
+  }, "profile one-shot scan hit through visible UI", 30000, 500);
+
+  const evidenceState = await waitFor(async () => {
+    const state = alertEvidenceState();
+    const profileHit = state.profileHitCounts.some((count) => count > 0);
+    return state.alertLineCount > 0 && state.screenshotCount > 0 && profileHit
+      ? state
+      : null;
+  }, "one-shot scan alert evidence files", 10000, 250);
+  await scrollProfileTargetsIntoView();
+  const hitScreenshot = await captureScreenshot("profile-one-shot-scan-hit");
+
+  const result = {
+    status: "pass",
+    selected,
+    capturedTargetState,
+    hitState,
+    evidenceState,
+    screenshots: [preparedScreenshot, hitScreenshot],
+  };
+  gateResults.scan = result;
+  return result;
 }
 
 async function runMonitoringGate() {
@@ -1384,6 +1504,25 @@ function writeEvidenceRecords(summary) {
       "utf8",
     );
   }
+  if (summary.gates.scan?.status === "pass") {
+    fs.writeFileSync(
+      path.join(evidenceDir, "profile-one-shot-scan-smoke.md"),
+      evidenceRecord({
+        gateTitle: "Profile One Shot Scan Smoke",
+        status: "pass",
+        observed:
+          "automated real WebView2/CDP smoke selected only the generated helper app-window source, captured that source as a template, clicked the visible profile scan-once button, observed a positive hit count and log row in the UI, verified the target hit badge/profile hit_count updated, and confirmed alerts.jsonl plus screenshot evidence were written",
+        evidenceFiles: [
+          resultPath,
+          appLogPath,
+          ...summary.gates.scan.screenshots,
+        ],
+        remainingRisk:
+          "proves the packaged visible one-shot scan path on this Windows interactive desktop with a generated stable window source; it does not prove every third-party window capture implementation or every production image corpus",
+      }),
+      "utf8",
+    );
+  }
   if (summary.gates.monitoring?.status === "pass") {
     fs.writeFileSync(
       path.join(evidenceDir, "profile-monitoring-restart-smoke.md"),
@@ -1451,6 +1590,9 @@ async function main() {
   if (gateMode === "all" || gateMode === "gallery") {
     await runGalleryGate();
   }
+  if (gateMode === "all" || gateMode === "scan") {
+    await runOneShotScanGate();
+  }
   if (gateMode === "all" || gateMode === "monitoring") {
     await runMonitoringGate();
   }
@@ -1482,6 +1624,7 @@ async function main() {
     resultPath,
     source: gateResults.source?.status || "skipped",
     gallery: gateResults.gallery?.status || "skipped",
+    scan: gateResults.scan?.status || "skipped",
     monitoring: gateResults.monitoring?.status || "skipped",
     layout: gateResults.layout?.status || "skipped",
   }, null, 2));
