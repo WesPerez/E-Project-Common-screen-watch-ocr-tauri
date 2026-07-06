@@ -430,6 +430,63 @@ function Stop-SmokeProcess {
     return $true
 }
 
+function Get-PeSubsystem {
+    param([string]$Path)
+
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $reader = [IO.BinaryReader]::new($stream)
+        $stream.Seek(0x3c, [IO.SeekOrigin]::Begin) | Out-Null
+        $peOffset = $reader.ReadInt32()
+        if ($peOffset -le 0 -or $peOffset -gt ($stream.Length - 96)) {
+            throw "invalid PE header offset $peOffset"
+        }
+        $stream.Seek($peOffset, [IO.SeekOrigin]::Begin) | Out-Null
+        $signature = $reader.ReadUInt32()
+        if ($signature -ne 0x00004550) {
+            throw "invalid PE signature 0x$($signature.ToString('X8'))"
+        }
+        $optionalHeaderOffset = $peOffset + 24
+        $stream.Seek($optionalHeaderOffset, [IO.SeekOrigin]::Begin) | Out-Null
+        $magic = $reader.ReadUInt16()
+        if ($magic -ne 0x10b -and $magic -ne 0x20b) {
+            throw "unsupported PE optional-header magic 0x$($magic.ToString('X4'))"
+        }
+        $stream.Seek($optionalHeaderOffset + 68, [IO.SeekOrigin]::Begin) | Out-Null
+        return [int]$reader.ReadUInt16()
+    } finally {
+        $stream.Dispose()
+    }
+}
+
+function Get-PeSubsystemName {
+    param([int]$Subsystem)
+
+    switch ($Subsystem) {
+        2 { return "WindowsGui" }
+        3 { return "WindowsConsole" }
+        default { return "Other($Subsystem)" }
+    }
+}
+
+function Assert-WindowsGuiSubsystem {
+    param(
+        [string]$Path,
+        [string]$Label
+    )
+
+    $subsystem = Get-PeSubsystem $Path
+    $name = Get-PeSubsystemName $subsystem
+    if ($subsystem -ne 2) {
+        throw "$Label must be a Windows GUI subsystem executable, got $name ($subsystem). A console subsystem build can show an unwanted console window."
+    }
+    return [pscustomobject][ordered]@{
+        Path = $Path
+        Subsystem = $subsystem
+        Name = $name
+    }
+}
+
 $smokeId = ([guid]::NewGuid().ToString("N")).Substring(0, 8)
 $smokeAppRoot = Join-Path ([IO.Path]::GetTempPath()) "screen-watch-ocr-tauri-packaged-smoke-app-$smokeId"
 $smokeLocalAppData = Join-Path ([IO.Path]::GetTempPath()) "screen-watch-ocr-tauri-packaged-smoke-$smokeId"
@@ -448,7 +505,9 @@ $fixture = $null
 
 New-Item -ItemType Directory -Path $smokeLocalAppData | Out-Null
 try {
+    $sourceSubsystem = Assert-WindowsGuiSubsystem -Path $ExePath -Label "source exe"
     $fixture = Initialize-LegacyAppDataFixture -AppRoot $smokeAppRoot -SourceExePath $ExePath
+    $stagedSubsystem = Assert-WindowsGuiSubsystem -Path $fixture.ExePath -Label "staged smoke exe"
     $defaultPortBusy = Test-TcpPortBusy 47628
     $process = Start-SmokeProcess `
         -ExePath $fixture.ExePath `
@@ -469,6 +528,8 @@ try {
 
     Write-Host "exePath: $($fixture.ExePath)"
     Write-Host "sourceExePath: $ExePath"
+    Write-Host "sourceExePeSubsystem: $($sourceSubsystem.Name) ($($sourceSubsystem.Subsystem))"
+    Write-Host "stagedExePeSubsystem: $($stagedSubsystem.Name) ($($stagedSubsystem.Subsystem))"
     Write-Host "smokeAppRoot: $smokeAppRoot"
     Write-Host "defaultInstancePortBusy: $defaultPortBusy"
     Write-Host "isolatedStartMinimizedPort: $startMinimizedPort"
@@ -481,6 +542,7 @@ try {
     Write-Host "processRunning: True"
     Write-Host "legacyMigrationSmokeVerified: True"
     Write-Host "startMinimizedSmokeVerified: True"
+    Write-Host "windowsGuiSubsystemSmokeVerified: True"
 
     $stoppedProcess = Stop-SmokeProcess $process
     $process = $null

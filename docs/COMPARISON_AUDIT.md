@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 07:16 +08:00
+Last updated: 2026-07-07 07:27 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -43,7 +43,7 @@ Everything else is separated so old and new processes do not collide:
 | Python baseline unittest | Current rerun passed 98 tests with `PYTHONPATH=src; python -m unittest -v`; `python -m screen_watch app --smoke-test` returned `{"ok": true, "monitors": 3}` |
 | Main migration verifier | Rust core 118, Tauri 85, OCR feature 24, frontend 101, frontend build and static contracts passed; Python baseline has fresh standalone evidence above |
 | Desktop smoke | 16 real Windows desktop gates passed |
-| Packaged smoke | final SHA-256 `F50203EE...` passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port using `release-single\ScreenWatchOCRTauri.exe` |
+| Packaged smoke | final SHA-256 `F50203EE...` is PE subsystem WindowsGui (2), not console; it passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port using `release-single\ScreenWatchOCRTauri.exe` |
 | Tray menu smoke | final SHA-256 `F50203EE...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0; old Python tray/processes were not touched |
 | WebView visual smoke | final SHA-256 `F50203EE...` passed clipboard paste, monitoring restart, layout resize, and legacy late-start remembered app-window recovery in packaged WebView2 runs. The late-start smoke loaded an old Python-shaped profile while the remembered app was absent, recorded `skippedWindowApps=1`, then started the app later and scanned/monitored with positive hits without refreshing or reselecting. Clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with 43x25 target thumbs inside 48x52 cards; monitoring restart recorded generation 1 then 2, first run 7 ticks/7 hits and second run 2 ticks/2 hits with the button restored to `开始监控`; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, and control-panel group splitter +32px/-32px |
 | WebView monitoring soak | final SHA-256 `F50203EE...` ran profile monitoring for 30,000ms with 16 UI samples, tick delta 56, hit delta 56, progress-log delta 28, and stopped with the button restored to `开始监控` |
@@ -82,6 +82,7 @@ Everything else is separated so old and new processes do not collide:
 | Resizable layout splitters | Proven | frontend layout tests for three-pane, stacked, and multi-pane control layouts; packaged WebView layout smoke drags the target/settings splitter, settings/preview splitter, target-list/log splitter, and control-panel group splitter with measured deltas and no horizontal overflow | Very narrow/mobile layouts are covered by responsive CSS and static tests, not exhaustive visual smoke |
 | Smaller image thumbnails | Proven | WebView clipboard smoke measured target thumbs 43x25 inside 48x52 cards and verified toolbar text is not clipped on the smoke viewport | None known |
 | Close hides to tray | Proven | packaged smoke | None known |
+| Final exe does not use the console subsystem | Proven | packaged smoke parses PE headers and requires WindowsGui subsystem 2 for `release-single\ScreenWatchOCRTauri.exe` and the staged smoke exe | None known for the final single exe |
 | Tray Show/Exit | Proven | tray-menu smoke using Tauri-owned native menu command IDs | Visual hover tooltip/icon recording not captured, backend icon/tooltip tests cover state |
 | Tray monitoring icon/tooltip state | Proven by backend tests | tray monitoring status contract and icon pixel tests | No visual tray hover screenshot in current evidence |
 | Start minimized | Proven | packaged smoke and tray smoke | None known |
