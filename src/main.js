@@ -62,6 +62,7 @@ let draggedTargetIndex = null;
 let targetContextMenu = null;
 let unlistenMonitorSession = null;
 let applyingProfileSources = false;
+let monitoringActive = false;
 let profileMonitoringActive = false;
 let sourcePreviewTimer = null;
 let sourcePreviewsEnabled = false;
@@ -214,10 +215,12 @@ function renderMonitoringEvent(payload) {
   const status = document.querySelector("#status");
   const result = document.querySelector("#scan-result");
   const transition = monitoringEventTransition(payload, {
+    monitoringActive,
     profileMonitoringActive,
   });
   result.textContent = JSON.stringify(payload, null, 2);
   status.textContent = transition.statusText;
+  monitoringActive = transition.nextMonitoringActive;
   profileMonitoringActive = transition.nextProfileMonitoringActive;
   trackMonitoringHeartbeat(payload);
   appendLog(monitoringEventLogText(payload, transition.statusText));
@@ -266,7 +269,7 @@ function trackMonitoringHeartbeat(payload) {
     monitorHeartbeatLastTick = monitorTickCount(snapshot);
     monitorHeartbeatLastWaitingLog = Date.now();
   }
-  if (profileMonitoringActive || kind === "started") {
+  if (monitoringActive || kind === "started") {
     startMonitoringHeartbeat(snapshot);
   }
 }
@@ -294,7 +297,7 @@ function stopMonitoringHeartbeat() {
 }
 
 async function pollMonitoringHeartbeat() {
-  if (!profileMonitoringActive) {
+  if (!monitoringActive) {
     stopMonitoringHeartbeat();
     return;
   }
@@ -305,6 +308,7 @@ async function pollMonitoringHeartbeat() {
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     if (!session.running) {
+      monitoringActive = false;
       profileMonitoringActive = false;
       updateRunControls();
       stopMonitoringHeartbeat();
@@ -1356,9 +1360,13 @@ async function startMonitoring() {
       text: document.querySelector("#scan-config").value,
       baseDir: currentDataDir,
     });
+    monitoringActive = Boolean(session.running);
     profileMonitoringActive = false;
+    startMonitoringHeartbeat(session);
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
+    appendLog("监控中");
+    updateRunControls();
   } catch (error) {
     result.textContent = String(error);
     status.textContent = String(error);
@@ -1371,8 +1379,11 @@ async function stopMonitoring() {
   status.textContent = "停止监控...";
   try {
     const session = await invoke("stop_monitoring_session");
+    monitoringActive = Boolean(session.running);
     profileMonitoringActive = false;
-    stopMonitoringHeartbeat();
+    if (!monitoringActive) {
+      stopMonitoringHeartbeat();
+    }
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     appendLog("已请求停止");
@@ -1388,6 +1399,12 @@ async function refreshMonitoringStatus() {
   const result = document.querySelector("#scan-result");
   try {
     const session = await invoke("monitoring_session_status");
+    monitoringActive = Boolean(session.running);
+    if (!monitoringActive) {
+      profileMonitoringActive = false;
+      stopMonitoringHeartbeat();
+      updateRunControls();
+    }
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
   } catch (error) {
@@ -2033,7 +2050,8 @@ async function startProfileMonitoring() {
       profileNumber: selectedProfileNumber(),
       options: requireProfileOptions("start-monitoring"),
     });
-    profileMonitoringActive = true;
+    monitoringActive = Boolean(session.running);
+    profileMonitoringActive = Boolean(session.running);
     startMonitoringHeartbeat(session);
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);

@@ -1025,6 +1025,7 @@ test("monitoring event transition refreshes profile only for profile tick hits",
   );
 
   assert.deepEqual(transition, {
+    nextMonitoringActive: true,
     nextProfileMonitoringActive: true,
     shouldRefreshProfile: true,
     snapshot: {
@@ -1048,6 +1049,7 @@ test("monitoring event transition handles stopped and snake-case tick errors", (
     },
   );
   assert.equal(tick.shouldRefreshProfile, false);
+  assert.equal(tick.nextMonitoringActive, true);
   assert.equal(tick.statusText, "监控中 - 本轮 3 hits，错误: capture failed");
 
   const stopped = monitoringEventTransition(
@@ -1059,8 +1061,40 @@ test("monitoring event transition handles stopped and snake-case tick errors", (
       profileMonitoringActive: true,
     },
   );
+  assert.equal(stopped.nextMonitoringActive, false);
   assert.equal(stopped.nextProfileMonitoringActive, false);
   assert.equal(stopped.statusText, "Ready");
+});
+
+test("monitoring event transition keeps generic monitoring active without refreshing profile", () => {
+  const started = monitoringEventTransition(
+    {
+      kind: "started",
+      snapshot: { running: true },
+    },
+    {
+      monitoringActive: false,
+      profileMonitoringActive: false,
+    },
+  );
+  assert.equal(started.nextMonitoringActive, true);
+  assert.equal(started.nextProfileMonitoringActive, false);
+  assert.equal(started.shouldRefreshProfile, false);
+
+  const stoppedBySnapshot = monitoringEventTransition(
+    {
+      kind: "tick",
+      snapshot: { running: false },
+      tickHitCount: 1,
+    },
+    {
+      monitoringActive: true,
+      profileMonitoringActive: true,
+    },
+  );
+  assert.equal(stoppedBySnapshot.nextMonitoringActive, false);
+  assert.equal(stoppedBySnapshot.nextProfileMonitoringActive, false);
+  assert.equal(stoppedBySnapshot.shouldRefreshProfile, true);
 });
 
 test("monitor error summary reports error count without text", () => {

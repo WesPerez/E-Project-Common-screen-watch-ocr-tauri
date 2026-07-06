@@ -1079,13 +1079,9 @@ mod tests {
     #[test]
     #[ignore = "requires an interactive Windows desktop with at least one selectable window"]
     fn session_start_scans_window_source_and_writes_evidence() {
-        let Some(window) = crate::window_sources::list_app_windows()
-            .unwrap()
-            .into_iter()
-            .next()
-        else {
-            return;
-        };
+        const TITLE: &str = "000 Screen Watch OCR monitoring window smoke";
+        let _form = TestFormProcess::new(TITLE).unwrap();
+        let window = wait_for_listed_app_window(TITLE).unwrap();
         let tmp = tempfile::tempdir().unwrap();
         let session = MonitorSessionState::default();
         let config = WatchConfig::from_json_str(
@@ -1129,6 +1125,64 @@ mod tests {
         assert!(stopped.tick_count > 0);
         assert!(stopped.hit_count > 0);
         assert!(tmp.path().join("alerts.jsonl").exists());
+    }
+
+    #[cfg(windows)]
+    struct TestFormProcess {
+        child: std::process::Child,
+    }
+
+    #[cfg(windows)]
+    impl TestFormProcess {
+        fn new(title: &str) -> Result<Self, String> {
+            let escaped_title = title.replace('\'', "''");
+            let script = format!(
+                "$ErrorActionPreference='Stop'; \
+                 Add-Type -AssemblyName System.Windows.Forms; \
+                 $form = New-Object System.Windows.Forms.Form; \
+                 $form.Text = '{escaped_title}'; \
+                 $form.Width = 360; $form.Height = 240; \
+                 $form.StartPosition = 'Manual'; $form.Left = 180; $form.Top = 180; \
+                 $form.TopMost = $true; \
+                 $timer = New-Object System.Windows.Forms.Timer; \
+                 $timer.Interval = 15000; \
+                 $timer.Add_Tick({{ $form.Close() }}); \
+                 $timer.Start(); \
+                 [System.Windows.Forms.Application]::Run($form);"
+            );
+            let child = std::process::Command::new("powershell.exe")
+                .args([
+                    "-NoProfile",
+                    "-STA",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    &script,
+                ])
+                .spawn()
+                .map_err(|err| format!("failed to start monitoring smoke window: {err}"))?;
+            Ok(Self { child })
+        }
+    }
+
+    #[cfg(windows)]
+    impl Drop for TestFormProcess {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    #[cfg(windows)]
+    fn wait_for_listed_app_window(title: &str) -> Result<crate::window_sources::AppWindow, String> {
+        for _ in 0..50 {
+            let windows = crate::window_sources::list_app_windows()?;
+            if let Some(window) = windows.into_iter().find(|window| window.title == title) {
+                return Ok(window);
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        Err(format!("monitoring smoke window {title:?} was not listed"))
     }
 
     fn resolved_region(name: &str) -> ResolvedRegion {

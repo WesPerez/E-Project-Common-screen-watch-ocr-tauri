@@ -620,6 +620,8 @@ export function monitoringStatusText(snapshot, options = {}) {
 export function monitoringEventTransition(payload = {}, state = {}) {
   const snapshot = payload?.snapshot || payload || {};
   const kind = String(payload?.kind || "").toLowerCase();
+  const snapshotRunning =
+    typeof snapshot.running === "boolean" ? snapshot.running : undefined;
   const tickHitCount = countFromEitherCase(
     payload,
     "tickHitCount",
@@ -627,9 +629,19 @@ export function monitoringEventTransition(payload = {}, state = {}) {
   );
   const tickError = payload?.tickError ?? payload?.tick_error;
   const tickHasHits = kind === "tick" && tickHitCount > 0;
+  const stopped = kind === "stopped" || snapshotRunning === false;
+  const eventIsRunning =
+    kind === "started" || kind === "tick" || snapshotRunning === true;
+  const nextMonitoringActive = stopped
+    ? false
+    : eventIsRunning
+      ? true
+      : Boolean(state.monitoringActive);
   return {
-    nextProfileMonitoringActive:
-      kind === "stopped" ? false : Boolean(state.profileMonitoringActive),
+    nextMonitoringActive,
+    nextProfileMonitoringActive: stopped
+      ? false
+      : Boolean(state.profileMonitoringActive),
     shouldRefreshProfile: Boolean(state.profileMonitoringActive && tickHasHits),
     snapshot,
     statusText: monitoringStatusText(snapshot, {

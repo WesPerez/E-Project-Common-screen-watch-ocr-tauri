@@ -70,13 +70,19 @@ public static class ScreenWatchTrayMenuSmokeNative
     public static extern bool SetCursorPos(int x, int y);
 
     [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
-    public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
-    public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
-    public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+    [DllImport("user32.dll")]
+    public static extern int GetMenuItemCount(IntPtr hMenu);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetMenuItemID(IntPtr hMenu, int nPos);
 
     public static string ClassName(IntPtr hWnd)
     {
@@ -178,12 +184,6 @@ public static class ScreenWatchTrayMenuSmokeNative
         return list.ToArray();
     }
 
-    public static void LeftClick(int x, int y)
-    {
-        SetCursorPos(x, y);
-        mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)x, (uint)y, 0, UIntPtr.Zero);
-        mouse_event(MOUSEEVENTF_LEFTUP, (uint)x, (uint)y, 0, UIntPtr.Zero);
-    }
 }
 "@
 }
@@ -305,6 +305,7 @@ function Open-TauriTrayMenu {
     param([object]$TrayRect)
 
     [ScreenWatchTrayMenuSmokeNative]::SetCursorPos($TrayRect.CenterX, $TrayRect.CenterY) | Out-Null
+    [ScreenWatchTrayMenuSmokeNative]::SetForegroundWindow($TrayRect.Hwnd) | Out-Null
     [ScreenWatchTrayMenuSmokeNative]::PostMessage(
         $TrayRect.Hwnd,
         6002,
@@ -342,25 +343,64 @@ function Assert-TauriMenuWindow {
 }
 
 function Invoke-FirstMenuItem {
-    param([object]$Menu)
+    param(
+        [object]$TrayRect,
+        [object]$Menu
+    )
 
-    $height = [int]($Menu.Bottom - $Menu.Top)
-    $itemHeight = [Math]::Max(18, [int]($height / 3))
-    $x = [int](($Menu.Left + $Menu.Right) / 2)
-    $y = [int]($Menu.Top + ($itemHeight / 2))
-    [ScreenWatchTrayMenuSmokeNative]::LeftClick($x, $y)
-    return "$x,$y"
+    return Invoke-MenuCommand -TrayRect $TrayRect -Menu $Menu -Position 0
 }
 
 function Invoke-LastMenuItem {
+    param(
+        [object]$TrayRect,
+        [object]$Menu
+    )
+
+    $hmenu = Get-NativeMenuHandle $Menu
+    $count = [ScreenWatchTrayMenuSmokeNative]::GetMenuItemCount($hmenu)
+    if ($count -le 0) {
+        throw "native Tauri tray menu has no items"
+    }
+    return Invoke-MenuCommand -TrayRect $TrayRect -Menu $Menu -Position ($count - 1)
+}
+
+function Get-NativeMenuHandle {
     param([object]$Menu)
 
-    $height = [int]($Menu.Bottom - $Menu.Top)
-    $itemHeight = [Math]::Max(18, [int]($height / 3))
-    $x = [int](($Menu.Left + $Menu.Right) / 2)
-    $y = [int]($Menu.Bottom - ($itemHeight / 2))
-    [ScreenWatchTrayMenuSmokeNative]::LeftClick($x, $y)
-    return "$x,$y"
+    $hmenu = [ScreenWatchTrayMenuSmokeNative]::SendMessage([IntPtr]$Menu.Hwnd, 0x01E1, [IntPtr]::Zero, [IntPtr]::Zero)
+    if ($hmenu -eq [IntPtr]::Zero) {
+        throw "native Tauri tray menu did not return an HMENU"
+    }
+    return $hmenu
+}
+
+function Invoke-MenuCommand {
+    param(
+        [object]$TrayRect,
+        [object]$Menu,
+        [int]$Position
+    )
+
+    $hmenu = Get-NativeMenuHandle $Menu
+    $itemId = [ScreenWatchTrayMenuSmokeNative]::GetMenuItemID($hmenu, $Position)
+    if ($itemId -eq [uint32]::MaxValue) {
+        throw "native Tauri tray menu item at position $Position is not commandable"
+    }
+    [ScreenWatchTrayMenuSmokeNative]::PostMessage(
+        $TrayRect.Hwnd,
+        0x0111,
+        [IntPtr]$itemId,
+        [IntPtr]::Zero
+    ) | Out-Null
+    [ScreenWatchTrayMenuSmokeNative]::PostMessage(
+        [IntPtr]$Menu.Hwnd,
+        0x0010,
+        [IntPtr]::Zero,
+        [IntPtr]::Zero
+    ) | Out-Null
+    Start-Sleep -Milliseconds 100
+    return "WM_COMMAND:$itemId"
 }
 
 $smokeId = ([guid]::NewGuid().ToString("N")).Substring(0, 8)
@@ -384,7 +424,7 @@ try {
     $trayRect = Get-TauriTrayRect $process
     Open-TauriTrayMenu $trayRect
     $showMenu = Assert-TauriMenuWindow $process "Show Tauri"
-    $showClick = Invoke-FirstMenuItem $showMenu
+    $showClick = Invoke-FirstMenuItem $trayRect $showMenu
 
     Wait-ForSmokeCondition "Show Tauri revealing the main window" {
         Assert-ProcessRunning $process "show-menu"
@@ -395,7 +435,7 @@ try {
     $trayRectAfterShow = Get-TauriTrayRect $process
     Open-TauriTrayMenu $trayRectAfterShow
     $exitMenu = Assert-TauriMenuWindow $process "Exit Tauri"
-    $exitClick = Invoke-LastMenuItem $exitMenu
+    $exitClick = Invoke-LastMenuItem $trayRectAfterShow $exitMenu
 
     if (-not $process.WaitForExit($StartupWaitSeconds * 1000)) {
         throw "Tauri process did not exit after the tray Exit Tauri menu item"
