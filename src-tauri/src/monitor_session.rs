@@ -117,7 +117,10 @@ impl MonitorSessionState {
         if regions.is_empty() && windows.is_empty() && window_apps.is_empty() {
             return Err("monitoring session has no screen or window sources".to_string());
         }
-        self.stop_current_worker()?;
+        self.reap_finished_worker()?;
+        if self.request_stop_if_worker_running()? {
+            return Err("previous monitoring session is still stopping".to_string());
+        }
 
         let poll_interval = poll_interval_duration(config.poll_interval_seconds);
         let settings = OcrSettings::from_env();
@@ -179,7 +182,7 @@ impl MonitorSessionState {
     }
 
     pub fn stop(&self) -> Result<MonitorSessionSnapshot, String> {
-        self.stop_current_worker()?;
+        self.request_stop_current_worker()?;
         self.snapshot()
     }
 
@@ -191,20 +194,32 @@ impl MonitorSessionState {
             .map_err(|_| "monitor session snapshot is poisoned".to_string())
     }
 
-    fn stop_current_worker(&self) -> Result<(), String> {
+    fn request_stop_current_worker(&self) -> Result<(), String> {
         let worker = self
             .worker
             .lock()
             .map_err(|_| "monitor session worker is poisoned".to_string())?
-            .take();
-        if let Some(worker) = worker {
-            worker.stop.store(true, Ordering::SeqCst);
-            worker
-                .handle
-                .join()
-                .map_err(|_| "monitor session thread panicked".to_string())?;
+            .as_ref()
+            .map(|worker| Arc::clone(&worker.stop));
+        if let Some(stop) = worker {
+            stop.store(true, Ordering::SeqCst);
         }
         mark_stopped(&self.snapshot).map(|_| ())
+    }
+
+    fn request_stop_if_worker_running(&self) -> Result<bool, String> {
+        let worker = self
+            .worker
+            .lock()
+            .map_err(|_| "monitor session worker is poisoned".to_string())?
+            .as_ref()
+            .map(|worker| Arc::clone(&worker.stop));
+        if let Some(stop) = worker {
+            stop.store(true, Ordering::SeqCst);
+            mark_stopped(&self.snapshot)?;
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     fn reap_finished_worker(&self) -> Result<(), String> {
@@ -548,7 +563,7 @@ mod tests {
         alerted_target_ids, mark_stopped, poll_interval_duration, record_monitor_tick,
         started_event, stopped_event, window_source_name, AlarmBeepState, MonitorClock,
         MonitorSessionEventKind, MonitorSessionSnapshot, MonitorSessionState, MonitorSources,
-        MIN_POLL_INTERVAL,
+        MonitorWorker, MIN_POLL_INTERVAL,
     };
     use screen_watch_core::{
         config::{WatchConfig, WindowConfig},
@@ -558,9 +573,12 @@ mod tests {
     };
     use std::{
         fs,
-        sync::{atomic::AtomicBool, Arc, Mutex},
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc, Mutex,
+        },
         thread,
-        time::Duration,
+        time::{Duration, Instant},
     };
 
     #[derive(Debug, Default)]
@@ -584,6 +602,42 @@ mod tests {
         let status = session.stop().unwrap();
         assert!(!status.running);
         assert_eq!(status.tick_count, 0);
+    }
+
+    #[test]
+    fn stop_requests_worker_without_waiting_for_thread_exit() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread_stop = Arc::clone(&stop);
+        let handle = thread::spawn(move || {
+            while !thread_stop.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(10));
+            }
+            thread::sleep(Duration::from_millis(150));
+        });
+        let session = MonitorSessionState {
+            worker: Mutex::new(Some(MonitorWorker { stop, handle })),
+            snapshot: Arc::new(Mutex::new(MonitorSessionSnapshot {
+                running: true,
+                started_at: Some("start".to_string()),
+                ..MonitorSessionSnapshot::default()
+            })),
+        };
+
+        let started = Instant::now();
+        let status = session.stop().unwrap();
+
+        assert!(started.elapsed() < Duration::from_millis(100));
+        assert!(!status.running);
+        assert!(session.worker.lock().unwrap().is_some());
+        for _ in 0..30 {
+            if session.snapshot().unwrap().stopped_at.is_some()
+                && session.worker.lock().unwrap().is_none()
+            {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(session.worker.lock().unwrap().is_none());
     }
 
     #[test]

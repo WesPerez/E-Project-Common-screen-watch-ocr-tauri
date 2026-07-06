@@ -34,9 +34,9 @@ use screen_watch_core::{
         clear_profile_target_hit_count_at, clear_profile_targets_at, normalize_profile_file_at,
         profile_path, profile_watch_config_at, read_profile_at, read_profile_state_at,
         record_profile_hits_at, remove_profile_target_at, reorder_profile_target_at,
-        save_last_profile_at, save_profile_sources_at, set_profile_target_enabled_at,
-        toggle_all_profile_targets_at, AddTemplateImagesResult, ProfileReadResult,
-        ProfileSourcesSaveResult, ProfileStateResult, ProfileTargetsEditResult,
+        save_last_profile_at, save_profile_sources_at, screenshots_dir,
+        set_profile_target_enabled_at, toggle_all_profile_targets_at, AddTemplateImagesResult,
+        ProfileReadResult, ProfileSourcesSaveResult, ProfileStateResult, ProfileTargetsEditResult,
         ProfileTargetsEnabledResult, ProfileWatchConfigOptions, PROFILE_COUNT,
     },
     scan::{ScanEngine, ScanFrameResult},
@@ -726,6 +726,16 @@ fn open_profile_target_file(
     open_path_with_default_app(&target_path)?;
     Ok(OpenTargetFileResult {
         path: target_path.display().to_string(),
+    })
+}
+
+#[tauri::command]
+fn open_evidence_dir() -> Result<OpenTargetFileResult, String> {
+    let path = screenshots_dir(user_data_dir());
+    std::fs::create_dir_all(&path).map_err(|err| err.to_string())?;
+    open_path_with_default_app(&path)?;
+    Ok(OpenTargetFileResult {
+        path: path.display().to_string(),
     })
 }
 
@@ -1450,6 +1460,7 @@ pub fn run() {
             set_profile_target_enabled,
             toggle_all_profile_targets,
             open_profile_target_file,
+            open_evidence_dir,
             profile_target_thumbnail,
             build_profile_watch_config,
             scan_profile_once,

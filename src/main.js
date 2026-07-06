@@ -51,6 +51,7 @@ let currentMonitors = [];
 let currentWindows = [];
 let currentDataDir = "";
 let currentProfile = null;
+let legacyMaxAlerts = null;
 let selectedMonitorIndexes = new Set();
 let selectedWindowHandles = new Set();
 let draggedTargetIndex = null;
@@ -76,6 +77,7 @@ async function refresh() {
     document.querySelector("#data-dir").textContent = info.dataDir;
     currentDataDir = info.dataDir;
     const profileState = await invoke("load_profile_state");
+    legacyMaxAlerts = legacyMaxAlertsFromState(profileState.state);
     document.querySelector("#profile-number").value = String(
       profileState.lastProfile || 1,
     );
@@ -85,6 +87,8 @@ async function refresh() {
     await refreshWindows();
     await refreshStartupStatus();
     await loadProfile({ selectFirstTarget: true });
+    updateRunControls();
+    appendLog("应用已就绪");
     status.textContent = "Ready";
   } catch (error) {
     status.textContent = String(error);
@@ -185,6 +189,11 @@ function formatBytes(value) {
   return `${(value / 1024 / 1024).toFixed(2)} MiB`;
 }
 
+function legacyMaxAlertsFromState(state) {
+  const value = Number(state?.max_alerts);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+}
+
 async function attachMonitoringEvents() {
   if (unlistenMonitorSession) {
     return;
@@ -203,8 +212,48 @@ function renderMonitoringEvent(payload) {
   result.textContent = JSON.stringify(payload, null, 2);
   status.textContent = transition.statusText;
   profileMonitoringActive = transition.nextProfileMonitoringActive;
+  appendLog(monitoringEventLogText(payload, transition.statusText));
+  updateRunControls();
   if (transition.shouldRefreshProfile) {
     loadProfile();
+  }
+}
+
+function monitoringEventLogText(payload, fallback) {
+  const snapshot = payload?.snapshot || {};
+  if (payload?.kind === "tick") {
+    const parts = [
+      `扫描 ${snapshot.regionCount || 0} 屏 / ${snapshot.windowCount || 0} 应用`,
+      `命中 ${payload.tickHitCount || 0}`,
+    ];
+    if (payload.tickError) {
+      parts.push(payload.tickError);
+    }
+    return parts.join("，");
+  }
+  if (payload?.kind === "started") {
+    return "监控中";
+  }
+  if (payload?.kind === "stopped") {
+    return "已停止";
+  }
+  return fallback || "状态更新";
+}
+
+function appendLog(message) {
+  const log = document.querySelector("#event-log");
+  if (!log) {
+    return;
+  }
+  const row = document.createElement("tr");
+  const time = document.createElement("td");
+  const event = document.createElement("td");
+  time.textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  event.textContent = String(message || "-");
+  row.replaceChildren(time, event);
+  log.prepend(row);
+  while (log.children.length > 100) {
+    log.lastElementChild?.remove();
   }
 }
 
@@ -319,6 +368,11 @@ function renderStartupStatus(startup) {
   document.querySelector("#startup-target").textContent =
     startup.targetPath || "-";
   document.querySelector("#startup-args").textContent = startup.arguments || "-";
+  const startupToggle = document.querySelector("#startup-toggle");
+  if (startupToggle) {
+    startupToggle.checked = Boolean(startup.enabled);
+    startupToggle.disabled = !startup.supported;
+  }
 }
 
 async function refreshStartupStatus() {
@@ -916,7 +970,8 @@ function applyProfileMatch(match) {
     match.beep_seconds ?? match.beep_count ?? 3;
   document.querySelector("#profile-beep-volume").value = match.beep_volume ?? 100;
   document.querySelector("#profile-max-templates").value = match.max_templates ?? 100;
-  document.querySelector("#profile-max-alerts").value = match.max_alerts ?? 50;
+  document.querySelector("#profile-max-alerts").value =
+    match.max_alerts ?? legacyMaxAlerts ?? 50;
 }
 
 function scaleText(scales) {
@@ -1015,6 +1070,8 @@ async function stopMonitoring() {
     profileMonitoringActive = false;
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
+    appendLog("已请求停止");
+    updateRunControls();
   } catch (error) {
     result.textContent = String(error);
     status.textContent = String(error);
@@ -1448,6 +1505,15 @@ async function removeProfileTarget(index) {
   }
 }
 
+async function removeSelectedProfileTarget() {
+  const status = document.querySelector("#status");
+  if (selectedTargetIndex === null || selectedTargetIndex === undefined) {
+    status.textContent = "请先选择一个模板";
+    return;
+  }
+  await removeProfileTarget(selectedTargetIndex);
+}
+
 async function clearProfileTargets() {
   if (!confirm("清空当前 profile 的全部模板？")) {
     return;
@@ -1629,11 +1695,25 @@ async function scanProfileOnce() {
     });
     result.textContent = JSON.stringify(scan, null, 2);
     status.textContent = scanStatusText(scan);
+    appendLog(scanStatusText(scan));
     if (scan.hitCount > 0) {
       await loadProfile();
     }
   } catch (error) {
     result.textContent = String(error);
+    status.textContent = String(error);
+  }
+}
+
+async function openEvidenceDir() {
+  const status = document.querySelector("#status");
+  status.textContent = "打开证据目录...";
+  try {
+    const result = await invoke("open_evidence_dir");
+    status.textContent = `Ready - ${result.path}`;
+    appendLog(`打开证据目录：${result.path}`);
+  } catch (error) {
+    document.querySelector("#scan-result").textContent = String(error);
     status.textContent = String(error);
   }
 }
@@ -1651,10 +1731,29 @@ async function startProfileMonitoring() {
     profileMonitoringActive = true;
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
+    appendLog("监控中");
+    updateRunControls();
   } catch (error) {
     result.textContent = String(error);
     status.textContent = String(error);
   }
+}
+
+async function toggleProfileMonitoring() {
+  if (profileMonitoringActive) {
+    await stopMonitoring();
+  } else {
+    await startProfileMonitoring();
+  }
+}
+
+function updateRunControls() {
+  const button = document.querySelector("#profile-monitor-start");
+  if (!button) {
+    return;
+  }
+  button.textContent = profileMonitoringActive ? "停止监控" : "开始监控";
+  button.classList.toggle("is-running", profileMonitoringActive);
 }
 
 document.querySelector("#refresh").addEventListener("click", refresh);
@@ -1668,6 +1767,9 @@ document
 document
   .querySelector("#startup-disable")
   .addEventListener("click", () => setStartup(false));
+document
+  .querySelector("#startup-toggle")
+  .addEventListener("change", (event) => setStartup(event.target.checked));
 document
   .querySelector("#capture-preview")
   .addEventListener("click", capturePreview);
@@ -1724,6 +1826,9 @@ document
   .querySelector("#profile-toggle-all")
   .addEventListener("click", toggleProfileTargets);
 document
+  .querySelector("#profile-delete-selected")
+  .addEventListener("click", removeSelectedProfileTarget);
+document
   .querySelector("#profile-clear-all")
   .addEventListener("click", clearProfileTargets);
 document
@@ -1746,10 +1851,13 @@ document
   .addEventListener("click", scanProfileOnce);
 document
   .querySelector("#profile-monitor-start")
-  .addEventListener("click", startProfileMonitoring);
+  .addEventListener("click", toggleProfileMonitoring);
 document
   .querySelector("#profile-monitor-stop")
   .addEventListener("click", stopMonitoring);
+document
+  .querySelector("#open-evidence-dir")
+  .addEventListener("click", openEvidenceDir);
 installEntryCursorEndHandlers(
   document.querySelectorAll("input[type='text'], input[type='number']"),
 );
