@@ -2082,6 +2082,14 @@ async function runLayoutGate() {
 async function runGalleryGate() {
   log("running template gallery visual gate");
   await waitForReadyStatus();
+  await resizeAppWindow(1120, 820);
+  await evalJs(`(() => {
+    window.scrollTo(0, 0);
+    window.dispatchEvent(new Event('scroll'));
+    return window.scrollY;
+  })()`);
+  await sleep(500);
+  await clearAllProfileTargetsForSmoke();
   const images = createInputImages();
   const importedState = await importProfileImages(images);
   const oversizedCards = importedState.cards.filter((card) =>
