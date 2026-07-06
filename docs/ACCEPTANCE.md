@@ -66,7 +66,10 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   action controls must remain wired with click handlers for buttons and change
   handlers for selects/checkboxes. Dynamic profile target cards must keep their
   click, right-click menu, checkbox, row button, and drag/drop action paths
-  wired to the profile edit commands. Every
+  wired to the profile edit commands. The default verifier now also locks a
+  legacy-visible-workflow contract so the old Python UI's visible workflows
+  continue to map to new Tauri controls, frontend handlers, and registered
+  backend commands, including evidence-directory opening. Every
   backend `#[tauri::command]` function must remain registered in
   `generate_handler![...]`, build flavor must remain compile-time
   packaged state instead of a runtime environment override, lite/full npm build

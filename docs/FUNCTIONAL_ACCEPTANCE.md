@@ -59,6 +59,12 @@ python -m unittest discover -s tests -v
 - Dynamic profile target cards must keep click-to-select/open, right-click
   hit-count menu, enabled checkbox, row button, drag/drop reorder, and profile
   edit command paths wired.
+- Legacy visible Python workflows must continue mapping to real Tauri UI paths:
+  profile slot, startup toggle, image upload/paste/capture, delete/clear target,
+  target enable/invert/open/reorder/hit-menu, screen/window source selection,
+  source preview, region/match settings, start/stop monitoring, one-shot scan,
+  event log, and evidence-directory opening must each have a visible control,
+  frontend handler, and registered backend command where applicable.
 - Backend Tauri commands must remain reachable; the verifier fails if a
   `#[tauri::command]` function is missing from `generate_handler![...]` or if
   the handler list contains a non-command function.

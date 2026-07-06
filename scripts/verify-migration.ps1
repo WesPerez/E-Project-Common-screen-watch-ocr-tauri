@@ -1420,6 +1420,138 @@ function Assert-FrontendDynamicTargetContract {
     }
 }
 
+function Assert-LegacyVisibleWorkflowContract {
+    param(
+        [string]$ProjectRootPath,
+        [string]$PythonProjectPath
+    )
+
+    $pythonSource = Get-Content -LiteralPath (Join-Path $PythonProjectPath "src\screen_watch\app.py") -Raw
+    $htmlSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "index.html") -Raw
+    $frontendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\main.js") -Raw
+    $backendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\lib.rs") -Raw
+    $backendCommands = Get-RegisteredTauriCommands $backendSource
+
+    $workflows = @(
+        @{
+            Name = "profile slot"
+            Legacy = @("profile_box = ttk.Combobox", 'profile_box.bind("<<ComboboxSelected>>", self.switch_profile)')
+            HtmlIds = @("profile-number")
+            Frontend = @('querySelector("#profile-number")', 'addEventListener("change", switchProfile)')
+            Commands = @("load_profile", "save_last_profile")
+        },
+        @{
+            Name = "startup toggle"
+            Legacy = @("self.make_check(profile_bar, self.startup_enabled", "self.toggle_startup")
+            HtmlIds = @("startup-toggle")
+            Frontend = @('querySelector("#startup-toggle")', "setStartup(event.target.checked)")
+            Commands = @("startup_status", "set_startup_enabled")
+        },
+        @{
+            Name = "image upload"
+            Legacy = @("command=self.add_files", "def add_files")
+            HtmlIds = @("profile-select-pngs")
+            Frontend = @('querySelector("#profile-select-pngs")', "selectProfilePngs", "importProfilePaths")
+            Commands = @("select_profile_template_pngs", "add_profile_template_pngs")
+        },
+        @{
+            Name = "clipboard paste"
+            Legacy = @("command=self.paste_images", "def paste_images")
+            HtmlIds = @("profile-paste-images")
+            Frontend = @('querySelector("#profile-paste-images")', "pasteProfileImages")
+            Commands = @("paste_profile_template_images")
+        },
+        @{
+            Name = "capture source as target"
+            Legacy = @("command=self.capture_as_target", "def capture_as_target")
+            HtmlIds = @("profile-capture-target")
+            Frontend = @('querySelector("#profile-capture-target")', "captureProfileTarget")
+            Commands = @("capture_profile_source_template")
+        },
+        @{
+            Name = "delete selected target"
+            Legacy = @("command=self.remove_selected", "def remove_selected")
+            HtmlIds = @("profile-delete-selected")
+            Frontend = @('querySelector("#profile-delete-selected")', "removeSelectedProfileTarget")
+            Commands = @("remove_profile_target")
+        },
+        @{
+            Name = "clear all targets"
+            Legacy = @("command=self.clear_targets", "def clear_targets")
+            HtmlIds = @("profile-clear-all")
+            Frontend = @('querySelector("#profile-clear-all")', "clearProfileTargets")
+            Commands = @("clear_profile_targets")
+        },
+        @{
+            Name = "target enable and invert"
+            Legacy = @("command=self.toggle_all_targets", "def toggle_all_targets", "def toggle_target")
+            HtmlIds = @("profile-toggle-all", "profile-targets")
+            Frontend = @('querySelector("#profile-toggle-all")', "toggleProfileTargets", "setProfileTargetEnabled(index, enabled.checked)")
+            Commands = @("toggle_all_profile_targets", "set_profile_target_enabled")
+        },
+        @{
+            Name = "target open reorder and hit menu"
+            Legacy = @("def open_target_file", "def reorder_target", "def clear_target_hit_count")
+            HtmlIds = @("profile-targets")
+            Frontend = @("clickProfileTarget", "openProfileTarget(index)", "reorderProfileTarget", "showTargetContextMenu", "clearProfileHitCount")
+            Commands = @("open_profile_target_file", "reorder_profile_target", "clear_profile_target_hit_count")
+        },
+        @{
+            Name = "screen source selection"
+            Legacy = @("command=self.refresh_monitors", "def refresh_monitors", "def selected_regions")
+            HtmlIds = @("monitors", "refresh")
+            Frontend = @('querySelector("#refresh")', "renderMonitorList", "ensureDefaultMonitorSelection")
+            Commands = @("list_monitors", "save_profile_sources")
+        },
+        @{
+            Name = "window source selection"
+            Legacy = @("self.window_combo", "def refresh_windows", "def selected_windows")
+            HtmlIds = @("windows", "refresh-windows")
+            Frontend = @('querySelector("#refresh-windows")', "refreshWindows", "rememberWindowApp")
+            Commands = @("list_app_windows", "save_profile_sources")
+        },
+        @{
+            Name = "source preview"
+            Legacy = @("self.source_canvas", "def refresh_source_previews")
+            HtmlIds = @("source-previews", "refresh-source-previews")
+            Frontend = @('querySelector("#refresh-source-previews")', "refreshSourcePreviews", "renderSourcePreviewCards")
+            Commands = @("capture_screen_region_preview_cached", "capture_window_preview_cached")
+        },
+        @{
+            Name = "region and match settings"
+            Legacy = @("def region_for", "def detector_config", "self.threshold", "self.interval_ms")
+            HtmlIds = @("profile-region-left", "profile-region-top", "profile-region-width", "profile-region-height", "profile-threshold", "profile-scales", "profile-interval-ms", "profile-cooldown", "profile-beep", "profile-beep-seconds", "profile-beep-volume", "profile-max-templates", "profile-max-alerts")
+            Frontend = @("buildProfileOptions", "profileRegionInputs", "persistProfileSources", 'querySelector("#profile-threshold")')
+            Commands = @("save_profile_sources", "build_profile_watch_config")
+        },
+        @{
+            Name = "run scan monitor evidence"
+            Legacy = @("command=self.toggle_monitoring", "command=self.scan_once", "command=self.open_evidence", "def toggle_monitoring", "def scan_once", "def open_evidence")
+            HtmlIds = @("profile-monitor-start", "profile-scan-once", "open-evidence-dir", "event-log")
+            Frontend = @('querySelector("#profile-monitor-start")', 'querySelector("#profile-scan-once")', 'querySelector("#open-evidence-dir")', "toggleProfileMonitoring", "scanProfileOnce", "openEvidenceDir", "appendLog")
+            Commands = @("start_profile_monitoring_session", "stop_monitoring_session", "monitoring_session_status", "scan_profile_once", "open_evidence_dir")
+        }
+    )
+
+    foreach ($workflow in $workflows) {
+        foreach ($expected in $workflow.Legacy) {
+            Assert-TextContains "legacy visible workflow '$($workflow.Name)' in Python app" $pythonSource $expected
+        }
+        foreach ($id in $workflow.HtmlIds) {
+            Assert-TextContains "legacy visible workflow '$($workflow.Name)' HTML id" $htmlSource "id=`"$id`""
+        }
+        foreach ($expected in $workflow.Frontend) {
+            Assert-TextContains "legacy visible workflow '$($workflow.Name)' frontend path" $frontendSource $expected
+        }
+        foreach ($command in $workflow.Commands) {
+            Assert-TextContains "legacy visible workflow '$($workflow.Name)' frontend command" $frontendSource "invoke(`"$command`""
+            if ($backendCommands -cnotcontains $command) {
+                throw "Legacy visible workflow '$($workflow.Name)' backend command '$command' is not registered in tauri::generate_handler!"
+            }
+        }
+    }
+}
+
 function Assert-FrontendOcrReadinessContract {
     param([string]$ProjectRootPath)
 
@@ -1652,6 +1784,7 @@ $summary = [ordered]@{
     frontendDomContract = $null
     frontendActionBindingContract = $null
     frontendDynamicTargetContract = $null
+    legacyVisibleWorkflowContract = $null
     frontendOcrReadinessContract = $null
     frontendSourcePreviewContract = $null
     backendCommandContract = $null
@@ -1965,6 +2098,13 @@ Invoke-CapturedStep `
     -Script { Assert-FrontendDynamicTargetContract $ProjectRootPath } `
     -SuppressOutput | Out-Null
 $summary.frontendDynamicTargetContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Legacy visible workflow contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-LegacyVisibleWorkflowContract $ProjectRootPath $PythonProjectPath } `
+    -SuppressOutput | Out-Null
+$summary.legacyVisibleWorkflowContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Frontend OCR readiness/probe contract" `
