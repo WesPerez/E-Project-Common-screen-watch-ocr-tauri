@@ -334,12 +334,14 @@ function startMonitoringHeartbeat(snapshot = {}) {
 
 function stopMonitoringHeartbeat() {
   if (!monitorHeartbeatTimer) {
+    monitorHeartbeatPolling = false;
     return;
   }
   window.clearInterval(monitorHeartbeatTimer);
   monitorHeartbeatTimer = null;
   monitorHeartbeatLastTick = null;
   monitorHeartbeatLastWaitingLog = 0;
+  monitorHeartbeatPolling = false;
 }
 
 function resetMonitoringProgressLog(snapshot = {}) {
@@ -1560,7 +1562,7 @@ async function stopMonitoring() {
     }
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
-    appendLog("已请求停止");
+    appendLog(monitoringActive ? "已请求停止" : "已停止");
     updateRunControls();
   } catch (error) {
     result.textContent = String(error);
@@ -2257,8 +2259,9 @@ async function startProfileMonitoring() {
     appendLog("监控中");
     updateRunControls();
   } catch (error) {
-    result.textContent = String(error);
-    status.textContent = String(error);
+    const message = monitoringStartErrorText(error);
+    result.textContent = message;
+    status.textContent = message;
     monitoringActive = false;
     profileMonitoringActive = false;
     currentMonitoringGeneration = 0;
@@ -2268,6 +2271,14 @@ async function startProfileMonitoring() {
     monitoringOperationPending = "";
     updateRunControls();
   }
+}
+
+function monitoringStartErrorText(error) {
+  const message = String(error);
+  if (message.includes("still stopping")) {
+    return "上一轮监控还在停止，请稍后再开始";
+  }
+  return message;
 }
 
 async function toggleProfileMonitoring() {

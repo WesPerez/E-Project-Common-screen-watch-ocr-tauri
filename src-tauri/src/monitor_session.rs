@@ -24,6 +24,8 @@ use std::{
 
 const MIN_POLL_INTERVAL: Duration = Duration::from_millis(120);
 const STOP_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const STOP_JOIN_GRACE: Duration = Duration::from_millis(75);
+const START_STOP_JOIN_GRACE: Duration = Duration::from_millis(1200);
 const WINDOW_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 pub const MONITOR_SESSION_EVENT: &str = "screen-watch://monitor-session";
 
@@ -122,7 +124,11 @@ impl MonitorSessionState {
             return Err("monitoring session has no screen or window sources".to_string());
         }
         self.reap_finished_worker()?;
-        self.request_stop_current_worker()?;
+        if self.request_stop_current_worker(START_STOP_JOIN_GRACE)? {
+            return Err(
+                "previous monitoring session is still stopping; try again in a moment".to_string(),
+            );
+        }
 
         let poll_interval = poll_interval_duration(config.poll_interval_seconds);
         let settings = OcrSettings::from_env();
@@ -192,7 +198,7 @@ impl MonitorSessionState {
     }
 
     pub fn stop(&self) -> Result<MonitorSessionSnapshot, String> {
-        self.request_stop_current_worker()?;
+        self.request_stop_current_worker(STOP_JOIN_GRACE)?;
         self.snapshot()
     }
 
@@ -204,22 +210,25 @@ impl MonitorSessionState {
             .map_err(|_| "monitor session snapshot is poisoned".to_string())
     }
 
-    fn request_stop_current_worker(&self) -> Result<(), String> {
+    fn request_stop_current_worker(&self, join_grace: Duration) -> Result<bool, String> {
         let worker = self
             .worker
             .lock()
             .map_err(|_| "monitor session worker is poisoned".to_string())?
             .take();
+        let mut still_stopping = false;
         if let Some(worker) = worker {
             worker.stop.store(true, Ordering::SeqCst);
-            if worker.handle.is_finished() {
-                worker
-                    .handle
-                    .join()
-                    .map_err(|_| "monitor session thread panicked".to_string())?;
+            if let Some(worker) = join_worker_if_finished(worker, join_grace)? {
+                still_stopping = true;
+                *self
+                    .worker
+                    .lock()
+                    .map_err(|_| "monitor session worker is poisoned".to_string())? = Some(worker);
             }
         }
-        mark_stopped(&self.snapshot).map(|_| ())
+        mark_stopped(&self.snapshot)?;
+        Ok(still_stopping)
     }
 
     fn reap_finished_worker(&self) -> Result<(), String> {
@@ -246,6 +255,26 @@ impl MonitorSessionState {
             }
         }
         Ok(())
+    }
+}
+
+fn join_worker_if_finished(
+    worker: MonitorWorker,
+    join_grace: Duration,
+) -> Result<Option<MonitorWorker>, String> {
+    let started = Instant::now();
+    loop {
+        if worker.handle.is_finished() {
+            worker
+                .handle
+                .join()
+                .map_err(|_| "monitor session thread panicked".to_string())?;
+            return Ok(None);
+        }
+        if started.elapsed() >= join_grace {
+            return Ok(Some(worker));
+        }
+        thread::sleep(STOP_POLL_INTERVAL.min(join_grace.saturating_sub(started.elapsed())));
     }
 }
 
@@ -590,7 +619,7 @@ mod tests {
         alerted_target_ids, mark_stopped, poll_interval_duration, record_monitor_tick,
         started_event, stopped_event, window_source_name, AlarmBeepState, MonitorClock,
         MonitorSessionEventKind, MonitorSessionSnapshot, MonitorSessionState, MonitorSources,
-        MonitorWorker, MIN_POLL_INTERVAL,
+        MonitorWorker, MIN_POLL_INTERVAL, START_STOP_JOIN_GRACE,
     };
     use screen_watch_core::{
         config::{WatchConfig, WindowConfig},
@@ -632,7 +661,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_requests_worker_without_waiting_for_thread_exit() {
+    fn stop_keeps_slow_stopping_worker_for_later_reap() {
         let stop = Arc::new(AtomicBool::new(false));
         let thread_stop = Arc::clone(&stop);
         let handle = thread::spawn(move || {
@@ -660,7 +689,62 @@ mod tests {
 
         assert!(started.elapsed() < Duration::from_millis(100));
         assert!(!status.running);
+        assert!(session.worker.lock().unwrap().is_some());
+        for _ in 0..20 {
+            if session.snapshot().unwrap().tick_count == 0
+                && session.worker.lock().unwrap().is_none()
+            {
+                return;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
         assert!(session.worker.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn start_reports_previous_worker_that_is_still_stopping() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread_stop = Arc::clone(&stop);
+        let handle = thread::spawn(move || {
+            while !thread_stop.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(10));
+            }
+            thread::sleep(START_STOP_JOIN_GRACE + Duration::from_millis(75));
+        });
+        let session = MonitorSessionState {
+            worker: Mutex::new(Some(MonitorWorker {
+                stop,
+                handle,
+                generation: 1,
+            })),
+            snapshot: Arc::new(Mutex::new(MonitorSessionSnapshot {
+                running: true,
+                started_at: Some("start".to_string()),
+                ..MonitorSessionSnapshot::default()
+            })),
+            active_generation: Arc::new(AtomicU64::new(1)),
+        };
+        let config = screen_watch_core::config::WatchConfig::from_json_str(
+            r#"{"targets":[{"kind":"pixel","name":"p","x":0,"y":0,"rgb":[0,0,0]}]}"#,
+        )
+        .unwrap();
+
+        let err = session
+            .start_sources_with_events(
+                config,
+                std::env::temp_dir(),
+                vec![resolved_region("screen")],
+                Vec::new(),
+                Vec::new(),
+                AlarmBeepState::default(),
+                None,
+                Arc::new(TestEventSink),
+            )
+            .unwrap_err();
+
+        assert!(err.contains("still stopping"));
+        assert!(!session.snapshot().unwrap().running);
+        assert!(session.worker.lock().unwrap().is_some());
     }
 
     #[test]

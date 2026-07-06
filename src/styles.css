@@ -106,9 +106,9 @@ h2 {
   --log-pane-height: 170px;
   --preview-pane-width: 0.75fr;
   --splitter-size: 9px;
-  --target-card-height: 62px;
-  --target-card-width: 58px;
-  --target-thumb-height: 31px;
+  --target-card-height: 52px;
+  --target-card-width: 48px;
+  --target-thumb-height: 25px;
   --target-list-pane-height: 1fr;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -336,8 +336,8 @@ h2 {
   top: 3px;
   left: 3px;
   z-index: 2;
-  --check-size: 11px;
-  --check-mark-stroke: 1.8px;
+  --check-size: 10px;
+  --check-mark-stroke: 1.7px;
 }
 
 .target-thumb {
@@ -374,14 +374,14 @@ h2 {
   position: absolute;
   top: 2px;
   right: 2px;
-  min-width: 14px;
-  height: 14px;
-  border-radius: 6px;
+  min-width: 12px;
+  height: 12px;
+  border-radius: 5px;
   background: #d92935;
   color: #ffffff;
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 700;
-  line-height: 14px;
+  line-height: 12px;
   text-align: center;
 }
 
@@ -396,7 +396,7 @@ h2 {
   display: block;
   overflow: hidden;
   color: #10141c;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -423,11 +423,11 @@ h2 {
 }
 
 .target-actions button {
-  min-height: 17px;
+  min-height: 15px;
   min-width: 0;
   padding: 0 1px;
   overflow: hidden;
-  font-size: 9px;
+  font-size: 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

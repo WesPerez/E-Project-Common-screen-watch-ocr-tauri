@@ -920,6 +920,10 @@ async function galleryState() {
       hasBottomBorder: getComputedStyle(card).borderBottomWidth !== '0px',
       hitText: card.querySelector('.target-hit-badge')?.textContent || '',
       hitCount: Number(card.querySelector('.target-hit-badge')?.textContent || 0),
+      card: {
+        width: Math.round(card.getBoundingClientRect().width || 0),
+        height: Math.round(card.getBoundingClientRect().height || 0),
+      },
       thumb: {
         width: Math.round(card.querySelector('.target-thumb')?.getBoundingClientRect().width || 0),
         height: Math.round(card.querySelector('.target-thumb')?.getBoundingClientRect().height || 0),
@@ -1042,7 +1046,10 @@ async function layoutState() {
         targetsControls: rectFor('[data-splitter="targets-controls"]'),
         controlsPreview: rectFor('[data-splitter="controls-preview"]'),
         targetsLog: rectFor('[data-splitter="targets-log"]'),
-        controlScreenApps: rectFor('[data-splitter="control-0"]'),
+        control0: rectFor('[data-splitter="control-0"]'),
+        control1: rectFor('[data-splitter="control-1"]'),
+        control2: rectFor('[data-splitter="control-2"]'),
+        control3: rectFor('[data-splitter="control-3"]'),
       },
       controlGroups: [...document.querySelectorAll('.control-panel .control-group')].map((item) => {
         const rect = item.getBoundingClientRect();
@@ -1494,14 +1501,19 @@ async function runMonitoringGate() {
   const firstRunScreenshot = await captureScreenshot("profile-monitoring-running");
   const firstStopState = await stopMonitoringFromUi("first monitoring stop");
 
-  await sleep(700);
+  await sleep(100);
   await clickSelector("#profile-monitor-start");
   const secondRunState = await waitForMonitoringStart("second monitoring run after stop");
   if (secondRunState.generation <= firstRunState.generation) {
     throw new Error(`monitoring restart reused stale generation ${secondRunState.generation} after ${firstRunState.generation}`);
   }
-  await sleep(1200);
-  const secondProgressState = await monitoringState();
+  const secondProgressState = await waitFor(async () => {
+    const state = await monitoringState();
+    return state.progressRows.length > firstProgressState.progressRows.length &&
+      state.tickCount > secondRunState.tickCount
+      ? state
+      : null;
+  }, "heartbeat progress log rows during second run", 15000, 500);
   const secondStopState = await stopMonitoringFromUi("second monitoring stop");
 
   const result = {
@@ -1645,8 +1657,11 @@ async function runLayoutGate() {
   if (initialState.horizontalOverflow) {
     throw new Error("initial layout has horizontal overflow");
   }
-  if (!initialState.splitters.controlScreenApps) {
-    throw new Error("expected control panel splitters to be present");
+  const missingSplitters = Object.entries(initialState.splitters)
+    .filter(([_name, rect]) => !rect || rect.width <= 0 || rect.height <= 0)
+    .map(([name]) => name);
+  if (missingSplitters.length > 0) {
+    throw new Error(`expected all workbench splitters to be present, missing ${missingSplitters.join(", ")}`);
   }
 
   await dragSelector('[data-splitter="targets-controls"]', { dx: 78, dy: 0 });
@@ -1724,6 +1739,14 @@ async function runGalleryGate() {
   await waitForReadyStatus();
   const images = createInputImages();
   const importedState = await importProfileImages(images);
+  const oversizedCards = importedState.cards.filter((card) =>
+    card.card.width > 52 ||
+    card.card.height > 56 ||
+    card.thumb.height > 28
+  );
+  if (oversizedCards.length > 0) {
+    throw new Error(`target cards are too large: ${JSON.stringify(oversizedCards)}`);
+  }
   setFirstTargetHitCount(7);
   await clickSelector("#profile-load");
   await waitForCardCount(4);
