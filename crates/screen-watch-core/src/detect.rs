@@ -1539,6 +1539,30 @@ mod tests {
     }
 
     #[test]
+    fn ocr_text_detection_matches_unicode_contains() {
+        let config = WatchConfig::from_json_str(
+            r#"{
+              "targets": [
+                {"kind":"ocr_text","id":"zh-id","name":"zh-ready","text":"准备","min_score":0.5}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let rows = vec![ocr_row(
+            "准备好了",
+            0.88,
+            Some(vec![[5.0, 6.0], [45.0, 6.0], [45.0, 26.0], [5.0, 26.0]]),
+        )];
+
+        let matches = detect_ocr_text_targets(&rows, &config.targets);
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].target_id, "zh-id");
+        assert_eq!(matches[0].text.as_deref(), Some("准备好了"));
+        assert_eq!(matches[0].box_xyxy, [5, 6, 45, 26]);
+    }
+
+    #[test]
     fn exact_template_detection_finds_box() {
         let frame = RgbFrame::new(
             4,

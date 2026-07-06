@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 06:59 +08:00
+Last updated: 2026-07-07 07:16 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -41,7 +41,7 @@ Everything else is separated so old and new processes do not collide:
 | Evidence | Current result |
 | --- | --- |
 | Python baseline unittest | Current rerun passed 98 tests with `PYTHONPATH=src; python -m unittest -v`; `python -m screen_watch app --smoke-test` returned `{"ok": true, "monitors": 3}` |
-| Main migration verifier | Rust core 117, Tauri 85, OCR feature 23, frontend 101, frontend build and static contracts passed; Python baseline has fresh standalone evidence above |
+| Main migration verifier | Rust core 118, Tauri 85, OCR feature 24, frontend 101, frontend build and static contracts passed; Python baseline has fresh standalone evidence above |
 | Desktop smoke | 16 real Windows desktop gates passed |
 | Packaged smoke | final SHA-256 `F50203EE...` passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port using `release-single\ScreenWatchOCRTauri.exe` |
 | Tray menu smoke | final SHA-256 `F50203EE...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0; old Python tray/processes were not touched |
@@ -50,7 +50,7 @@ Everything else is separated so old and new processes do not collide:
 | Portable package verification | latest lite portable 1,613,143 bytes remains a historical content-verified package; full portable 3,749,839 bytes remains the latest historical full package verification; final user deliverable is the fresh single exe |
 | Template benchmark | 2560x1440, 8 templates: flat 65ms 8/8, textured 432ms 8/8 |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 8579ms recorded |
-| Real OCR smoke | Current rerun passed with external PP-OCRv5 English models: probe initialized and READY PNG was recognized through `cargo test --features ocr` |
+| Real OCR smoke | Current rerun passed with external PP-OCRv5 English models: probe initialized and READY PNG was recognized through `cargo test --features ocr`; `npm run ocr:text:parity` also compared old Python `Detector._ocr` supplied-row semantics against Rust OCR text detection/ScanEngine tests, including min_score, case sensitivity, box flattening, missing-box behavior, and a Unicode contains row |
 | Manual evidence status | 16 pass, 0 blocked, 0 fail, 0 missing |
 
 ## Feature Matrix
@@ -67,7 +67,7 @@ Everything else is separated so old and new processes do not collide:
 | Hit-count badges and clear hit menu | Proven | frontend tests, WebView context-menu smoke | None known |
 | Pixel target detection | Proven | Python baseline, Rust core tests, scan tests | None known |
 | Template target detection, scales, worker limit | Proven | Rust detector tests, parity/benchmark gates | Production-profile smoke records 8.6s for 18 real templates on synthetic 1440p placement; acceptable but worth tracking |
-| OCR target detection | Partially proven | text-row core tests, current real PP-OCRv5 English READY smoke | Chinese accuracy, PP-OCRv6/RapidOCR-native compatibility, broad OCR quality are future validation items |
+| OCR target detection | Partially proven | text-row core tests, Python-vs-Rust OCR text parity smoke, current real PP-OCRv5 English READY smoke | Chinese model recognition accuracy, PP-OCRv6/RapidOCR-native compatibility, broad OCR quality are future validation items |
 | Screen source listing and mss-style monitor indexes | Proven | desktop monitor-listing smoke | Exotic multi-monitor DPI/topology combinations still need spot checks |
 | App-window listing, duplicate ordinals, remembered apps | Proven | window source tests, desktop remembered-window gates | Apps that refuse capture remain an OS/window limitation |
 | Existing Python profile/template/state compatibility | Proven | core profile preservation tests, packaged migration smoke, legacy profile WebView end-to-end smoke, legacy late-start remembered-app WebView smoke | None known for generated present-at-startup or late-start remembered app-window workflows |
@@ -99,10 +99,11 @@ capture, profile/template management, tray/startup behavior, and a small
 single-file executable. The current delivered exe is about 3.42 MiB versus the
 recorded Python/PyInstaller baseline of 102,021,797 bytes.
 
-Do not claim broad OCR parity with the Python RapidOCR/PP-OCRv6 path yet. The
-new app has a working optional OCR architecture and a real external PP-OCRv5
-English smoke pass, but production OCR quality across Chinese text, PP-OCRv6
-assets, and varied real screenshots remains a future validation item.
+Do not claim broad OCR model parity with the Python RapidOCR/PP-OCRv6 path yet.
+The new app has a working optional OCR architecture, a Python-vs-Rust OCR text
+matching parity smoke for supplied rows, and a real external PP-OCRv5 English
+smoke pass, but production OCR recognition quality across Chinese text,
+PP-OCRv6 assets, and varied real screenshots remains a future validation item.
 
 For adding future features, keep these guardrails:
 

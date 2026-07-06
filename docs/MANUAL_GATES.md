@@ -121,12 +121,20 @@ Probe plus recognition command:
 powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1 -SkipRelease -IncludeOcrSmoke -OcrModelDir "D:\Models\rapidocr" -OcrSmokeImage ".\smoke.png" -OcrSmokeExpect "READY"
 ```
 
+Python-vs-Rust OCR text matching parity command:
+
+```powershell
+npm run ocr:text:parity
+```
+
 Expected evidence:
 
 - `ocrSmoke: probe` or `ocrSmoke: probe and recognition`.
 - `native_ocr_real_model_probe_initializes_from_external_assets` passes.
 - `native_ocr_real_model_recognizes_smoke_png` passes when image/expect are
   supplied.
+- `ocrTextParitySmoke: passed`, with Python baseline `Detector._ocr` supplied-row
+  cases and Rust OCR text detection/ScanEngine cases passing in the result JSON.
 - The run does not copy or embed OCR model files into the app package.
 
 ## WebView Source Preview Visual Smoke
