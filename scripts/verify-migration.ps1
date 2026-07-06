@@ -1,7 +1,7 @@
 param(
     [string]$PythonProject = "",
     [int]$MinimumPythonTests = 98,
-    [int]$MinimumRustCoreTests = 117,
+    [int]$MinimumRustCoreTests = 120,
     [int]$MinimumTauriTests = 82,
     [int]$MinimumOcrFeatureTests = 23,
     [int]$MinimumFrontendTests = 89,
@@ -1430,6 +1430,7 @@ function Assert-LegacyVisibleWorkflowContract {
     $htmlSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "index.html") -Raw
     $frontendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\main.js") -Raw
     $backendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\lib.rs") -Raw
+    $profileSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "crates\screen-watch-core\src\profile.rs") -Raw
     $backendCommands = Get-RegisteredTauriCommands $backendSource
 
     $workflows = @(
@@ -1521,7 +1522,7 @@ function Assert-LegacyVisibleWorkflowContract {
             Name = "region and match settings"
             Legacy = @("def region_for", "def detector_config", "self.threshold", "self.interval_ms")
             HtmlIds = @("profile-region-left", "profile-region-top", "profile-region-width", "profile-region-height", "profile-threshold", "profile-scales", "profile-interval-ms", "profile-cooldown", "profile-beep", "profile-beep-seconds", "profile-beep-volume", "profile-max-templates", "profile-max-alerts")
-            Frontend = @("buildProfileOptions", "profileRegionInputs", "persistProfileSources", 'querySelector("#profile-threshold")')
+            Frontend = @("buildProfileOptions", "profileRegionInputs", "persistProfileSources", 'querySelector("#profile-threshold")', "legacyMaxAlerts = options.maxAlerts ?? legacyMaxAlerts")
             Commands = @("save_profile_sources", "build_profile_watch_config")
         },
         @{
@@ -1550,6 +1551,10 @@ function Assert-LegacyVisibleWorkflowContract {
             }
         }
     }
+
+    Assert-TextContains "legacy visible workflow max_alerts backend state save" $backendSource "save_max_alerts_at(data_dir, max_alerts)"
+    Assert-TextContains "legacy visible workflow max_alerts state helper" $profileSource "pub fn save_max_alerts_at"
+    Assert-TextContains "legacy visible workflow max_alerts profile cleanup" $profileSource 'out.remove("max_alerts")'
 }
 
 function Assert-FrontendOcrReadinessContract {

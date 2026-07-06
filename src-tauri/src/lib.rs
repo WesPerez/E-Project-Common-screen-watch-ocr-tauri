@@ -34,7 +34,7 @@ use screen_watch_core::{
         clear_profile_target_hit_count_at, clear_profile_targets_at, normalize_profile_file_at,
         profile_path, profile_watch_config_at, read_profile_at, read_profile_state_at,
         record_profile_hits_at, remove_profile_target_at, reorder_profile_target_at,
-        save_last_profile_at, save_profile_sources_at, screenshots_dir,
+        save_last_profile_at, save_max_alerts_at, save_profile_sources_at, screenshots_dir,
         set_profile_target_enabled_at, toggle_all_profile_targets_at, AddTemplateImagesResult,
         ProfileReadResult, ProfileSourcesSaveResult, ProfileStateResult, ProfileTargetsEditResult,
         ProfileTargetsEnabledResult, ProfileWatchConfigOptions, PROFILE_COUNT,
@@ -603,8 +603,13 @@ fn save_profile_sources(
     profile_number: u32,
     options: ProfileWatchConfigOptions,
 ) -> Result<ProfileSourcesSaveResult, String> {
-    let (_, path) = checked_profile_path(profile_number)?;
-    save_profile_sources_at(path, options).map_err(|err| err.to_string())
+    let (data_dir, path) = checked_profile_path(profile_number)?;
+    let max_alerts = options.max_alerts;
+    let result = save_profile_sources_at(path, options).map_err(|err| err.to_string())?;
+    if let Some(max_alerts) = max_alerts {
+        save_max_alerts_at(data_dir, max_alerts).map_err(|err| err.to_string())?;
+    }
+    Ok(result)
 }
 
 #[tauri::command]

@@ -1332,6 +1332,10 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
 - Window layout remains under `state.json` `layout.geometry` using the Python
   `WIDTHxHEIGHT+X+Y` geometry format, while preserving existing layout ratios
   and unknown state fields.
+- GUI screenshot retention remains under the Python-compatible global
+  `state.json` `max_alerts`; profile saves clean stale Tauri-written
+  `match.max_alerts` values instead of creating a per-profile retention
+  setting that the Python app would ignore.
 - Templates remain under `templates/`.
 - Screenshots/alerts remain under `screenshots/` and `alerts.jsonl` unless the user
   explicitly changes the setting.

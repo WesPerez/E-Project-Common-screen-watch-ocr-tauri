@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 07:40 +08:00
+Last updated: 2026-07-07 07:47 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -41,7 +41,7 @@ Everything else is separated so old and new processes do not collide:
 | Evidence | Current result |
 | --- | --- |
 | Python baseline unittest | Current rerun passed 98 tests with `PYTHONPATH=src; python -m unittest -v`; `python -m screen_watch app --smoke-test` returned `{"ok": true, "monitors": 3}` |
-| Main migration verifier | Rust core 118, Tauri 85, OCR feature 24, frontend 101, frontend build and static contracts passed; fresh static rerun added and passed `legacyVisibleWorkflowContract`, which maps old visible Python workflows to new controls, frontend handlers, and registered Tauri commands; Python baseline has fresh standalone evidence above |
+| Main migration verifier | Rust core 120, Tauri 85, OCR feature 24, frontend 101, frontend build and static contracts passed; `legacyVisibleWorkflowContract` maps old visible Python workflows to new controls, frontend handlers, and registered Tauri commands, including the Python-compatible global `state.json` `max_alerts` path; Python baseline has fresh standalone evidence above |
 | Desktop smoke | 16 real Windows desktop gates passed |
 | Packaged smoke | final SHA-256 `F50203EE...` is PE subsystem WindowsGui (2), not console; it passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port using `release-single\ScreenWatchOCRTauri.exe` |
 | Tray menu smoke | final SHA-256 `F50203EE...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0; old Python tray/processes were not touched |
@@ -58,7 +58,7 @@ Everything else is separated so old and new processes do not collide:
 | Python baseline feature | Tauri status | Evidence | Remaining risk |
 | --- | --- | --- | --- |
 | 1-5 profile slots, compatible profile JSON, unknown-field tolerance | Proven | core/profile tests, verifier state/profile contracts | None known for current schema |
-| Shared state geometry and last profile | Proven | window layout tests, packaged geometry smoke | DPI-specific restore is tested with tolerance, not every monitor topology |
+| Shared state geometry, last profile, and global screenshot retention | Proven | window layout tests, max-alerts state compatibility tests, packaged geometry smoke | DPI-specific restore is tested with tolerance, not every monitor topology |
 | Template import from files | Proven | backend gallery workflow, WebView visual smoke | Broad user image corpus not exhaustively sampled |
 | Clipboard/path paste templates | Proven | clipboard import tests, frontend paste guards, packaged WebView clipboard smoke for CF_DIB bitmap paste and CF_HDROP file-list paste | Every clipboard producer and image codec is not exhaustively sampled |
 | Capture selected screen/window as template | Proven | desktop capture gates, WebView gallery capture-source smoke | Third-party hardware-accelerated/minimized windows can still return stale/black frames |

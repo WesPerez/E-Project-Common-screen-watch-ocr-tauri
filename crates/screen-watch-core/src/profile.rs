@@ -417,6 +417,27 @@ pub fn save_last_profile_at(
     Ok(profile_state_result(state))
 }
 
+pub fn save_max_alerts_at(
+    data_dir: impl AsRef<Path>,
+    max_alerts: u32,
+) -> io::Result<ProfileStateResult> {
+    if max_alerts == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "max_alerts must be >= 1",
+        ));
+    }
+    let path = state_path(data_dir);
+    let mut state = read_profile_data(&path)?;
+    let object = ensure_profile_object(&mut state)?;
+    object.insert(
+        "max_alerts".to_string(),
+        Value::Number(Number::from(max_alerts as u64)),
+    );
+    write_profile_data(&path, &state)?;
+    Ok(profile_state_result(state))
+}
+
 pub fn parse_window_geometry(value: &str) -> io::Result<WindowGeometry> {
     fn invalid() -> io::Error {
         io::Error::new(
@@ -1202,12 +1223,7 @@ fn profile_match(
         "max_templates".to_string(),
         Value::Number(Number::from(options.max_templates as u64)),
     );
-    if let Some(max_alerts) = options.max_alerts {
-        out.insert(
-            "max_alerts".to_string(),
-            Value::Number(Number::from(max_alerts as u64)),
-        );
-    }
+    out.remove("max_alerts");
     Ok(out)
 }
 
@@ -1428,7 +1444,7 @@ mod tests {
         profile_watch_config_from_targets, read_profile_at, read_profile_state_at,
         read_profile_targets, read_window_geometry_at, record_profile_hits_at, record_target_hits,
         remove_profile_target_at, reorder_profile_target_at, save_last_profile_at,
-        save_profile_sources_at, save_window_geometry_at, screenshots_dir,
+        save_max_alerts_at, save_profile_sources_at, save_window_geometry_at, screenshots_dir,
         set_profile_target_enabled_at, state_path, target_enabled, target_identity, template_name,
         template_stamp, template_suffix, templates_dir, toggle_all_profile_targets_at, window_key,
         write_rgb_png, ProfileWatchConfigOptions, WindowGeometry, PROFILE_COUNT,
@@ -1509,6 +1525,44 @@ mod tests {
         assert_eq!(value["state"]["last_profile"], json!(3));
         assert_eq!(value["state"]["layout"]["geometry"], "1024x640+10+20");
         assert_eq!(value["state"]["future"], json!({"kept": true}));
+    }
+
+    #[test]
+    fn max_alerts_state_update_preserves_python_state_shape_and_unknown_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        fs::create_dir_all(&data).unwrap();
+        fs::write(
+            state_path(&data),
+            serde_json::to_string_pretty(&json!({
+                "last_profile": 2,
+                "layout": {"geometry": "980x680+20+30", "future_layout": true},
+                "future": {"kept": true},
+                "max_alerts": 5
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let result = save_max_alerts_at(&data, 17).unwrap();
+
+        let stored: Value =
+            serde_json::from_str(&fs::read_to_string(state_path(&data)).unwrap()).unwrap();
+        assert_eq!(stored["last_profile"], json!(2));
+        assert_eq!(stored["layout"]["geometry"], json!("980x680+20+30"));
+        assert_eq!(stored["layout"]["future_layout"], json!(true));
+        assert_eq!(stored["future"], json!({"kept": true}));
+        assert_eq!(stored["max_alerts"], json!(17));
+        assert_eq!(result.last_profile, 2);
+        assert_eq!(result.state["max_alerts"], json!(17));
+    }
+
+    #[test]
+    fn max_alerts_state_update_rejects_zero_like_python_positive_int_parser() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = save_max_alerts_at(tmp.path(), 0).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("max_alerts"));
     }
 
     #[test]
@@ -1614,7 +1668,7 @@ mod tests {
             &profile,
             serde_json::to_string_pretty(&json!({
                 "targets": [{"id": "target-a", "enabled": false}],
-                "match": {"threshold": 0.77, "future_match": true},
+                "match": {"threshold": 0.77, "max_alerts": 99, "future_match": true},
                 "future": {"kept": true}
             }))
             .unwrap(),
@@ -1673,7 +1727,7 @@ mod tests {
         assert_eq!(stored["match"]["beep_seconds"], json!(4.0));
         assert_eq!(stored["match"]["beep_volume"], json!(42));
         assert_eq!(stored["match"]["max_templates"], json!(12));
-        assert_eq!(stored["match"]["max_alerts"], json!(7));
+        assert!(stored["match"].get("max_alerts").is_none());
         assert_eq!(stored["match"]["future_match"], json!(true));
         assert_eq!(stored["future"]["kept"], json!(true));
         assert_eq!(stored["monitors"], json!([2, 3]));

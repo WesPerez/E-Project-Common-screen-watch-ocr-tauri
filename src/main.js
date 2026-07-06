@@ -1553,11 +1553,13 @@ async function persistProfileSources() {
     return;
   }
   try {
+    const options = buildProfileOptions();
     await persistLastProfile();
     await invoke("save_profile_sources", {
       profileNumber: selectedProfileNumber(),
-      options: buildProfileOptions(),
+      options,
     });
+    legacyMaxAlerts = options.maxAlerts ?? legacyMaxAlerts;
   } catch (error) {
     document.querySelector("#status").textContent = String(error);
   }
