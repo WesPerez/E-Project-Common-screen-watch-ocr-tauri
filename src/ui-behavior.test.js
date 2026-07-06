@@ -30,6 +30,8 @@ import {
   profileSourceOptionsHaveSources,
   recordRepeatClick,
   rememberWindowGeometry,
+  resizeStackedPaneLayout,
+  resizeThreePaneLayout,
   restoreLayoutPlan,
   scrollbarOverflowState,
   selectIndexedListItem,
@@ -1167,6 +1169,61 @@ test("horizontal sashes fall back to bounded equal side panes when narrow", () =
     360,
     580,
   ]);
+});
+
+test("resizable three-pane layout keeps all workbench columns bounded", () => {
+  const layout = resizeThreePaneLayout(
+    { first: 500, second: 340, third: 360 },
+    { delta: 420, splitter: "targets-controls" },
+    {
+      minFirst: 330,
+      minSecond: 270,
+      minThird: 270,
+      total: 1200,
+    },
+  );
+
+  assert.deepEqual(layout, {
+    first: 660,
+    second: 270,
+    third: 270,
+  });
+});
+
+test("resizable three-pane layout scales saved widths to the current window", () => {
+  const layout = resizeThreePaneLayout(
+    { first: 700, second: 340, third: 460 },
+    {},
+    {
+      minFirst: 330,
+      minSecond: 270,
+      minThird: 270,
+      total: 1000,
+    },
+  );
+
+  assert.deepEqual(layout, {
+    first: 460,
+    second: 270,
+    third: 270,
+  });
+});
+
+test("resizable stacked layout keeps the image list and log usable", () => {
+  const layout = resizeStackedPaneLayout(
+    { first: 260, second: 140 },
+    { delta: -220, splitter: "first-second" },
+    {
+      minFirst: 120,
+      minSecond: 88,
+      total: 400,
+    },
+  );
+
+  assert.deepEqual(layout, {
+    first: 120,
+    second: 280,
+  });
 });
 
 test("restore layout waits until panes are mapped", () => {

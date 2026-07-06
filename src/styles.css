@@ -96,6 +96,12 @@ h2 {
 }
 
 .workbench {
+  --control-pane-width: 340px;
+  --left-pane-width: 1fr;
+  --log-pane-height: 170px;
+  --preview-pane-width: 0.75fr;
+  --splitter-size: 7px;
+  --target-list-pane-height: 1fr;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   width: 100vw;
@@ -148,9 +154,14 @@ h2 {
 
 .app-grid {
   display: grid;
-  grid-template-columns: minmax(450px, 1fr) 340px minmax(300px, 0.75fr);
+  grid-template-columns:
+    minmax(330px, var(--left-pane-width))
+    var(--splitter-size)
+    minmax(270px, var(--control-pane-width))
+    var(--splitter-size)
+    minmax(270px, var(--preview-pane-width));
   min-height: 0;
-  gap: 8px;
+  gap: 0;
 }
 
 .panel {
@@ -169,9 +180,14 @@ h2 {
 }
 
 .target-panel {
-  grid-template-rows: auto auto minmax(260px, 1fr) minmax(170px, 0.46fr);
+  grid-template-rows:
+    auto
+    auto
+    minmax(120px, var(--target-list-pane-height))
+    var(--splitter-size)
+    minmax(88px, var(--log-pane-height));
   padding: 10px;
-  gap: 8px;
+  gap: 6px;
 }
 
 .control-panel {
@@ -226,13 +242,13 @@ h2 {
 
 .target-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
-  grid-auto-rows: 132px;
+  grid-template-columns: repeat(auto-fill, minmax(94px, 1fr));
+  grid-auto-rows: 108px;
   align-content: start;
-  gap: 10px;
+  gap: 6px;
   min-height: 0;
   margin: 0;
-  padding: 2px;
+  padding: 1px;
   overflow: auto;
   list-style: none;
   overscroll-behavior: contain;
@@ -263,7 +279,7 @@ h2 {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 0;
-  padding: 5px;
+  padding: 4px;
 }
 
 .target-card.is-selected {
@@ -297,8 +313,8 @@ h2 {
 
 .target-enable-check {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 6px;
+  left: 6px;
   z-index: 2;
 }
 
@@ -308,7 +324,7 @@ h2 {
   place-items: center;
   min-width: 0;
   min-height: 0;
-  height: 88px;
+  height: 64px;
   overflow: hidden;
   background: #f0f1f3;
   color: #6d7580;
@@ -334,23 +350,23 @@ h2 {
 
 .target-hit-badge {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 9px;
+  top: 4px;
+  right: 4px;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 8px;
   background: #d92935;
   color: #ffffff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  line-height: 18px;
+  line-height: 17px;
   text-align: center;
 }
 
 .target-text {
   display: block;
   min-width: 0;
-  padding: 4px 2px 0;
+  padding: 3px 1px 0;
   text-align: center;
 }
 
@@ -358,7 +374,7 @@ h2 {
   display: block;
   overflow: hidden;
   color: #10141c;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -373,7 +389,7 @@ h2 {
   position: absolute;
   inset: auto 4px 4px 4px;
   display: none;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   padding-top: 4px;
   background: linear-gradient(transparent, #ffffff 18%);
@@ -386,8 +402,12 @@ h2 {
 
 .target-actions button {
   min-height: 22px;
-  padding: 1px 3px;
+  min-width: 0;
+  padding: 1px 2px;
+  overflow: hidden;
   font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .target-actions .danger {
@@ -405,8 +425,62 @@ h2 {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
-  border-top: 1px solid #c8ced8;
-  padding-top: 6px;
+}
+
+.splitter {
+  position: relative;
+  min-width: var(--splitter-size);
+  min-height: var(--splitter-size);
+  border: 0;
+  background: transparent;
+  touch-action: none;
+}
+
+.splitter::before {
+  content: "";
+  position: absolute;
+  inset: 1px 2px;
+  border-radius: 2px;
+  background: #cbd2dc;
+  opacity: 0.8;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.splitter:hover::before,
+.splitter:focus-visible::before,
+.splitter.is-dragging::before {
+  background: #2f75b5;
+  opacity: 1;
+}
+
+.splitter.vertical {
+  cursor: col-resize;
+}
+
+.splitter.vertical::before {
+  inset: 8px 2px;
+}
+
+.splitter.horizontal {
+  cursor: row-resize;
+}
+
+.splitter.horizontal::before {
+  inset: 2px 8px;
+}
+
+.splitter:focus-visible {
+  outline: 2px solid #2f75b5;
+  outline-offset: 1px;
+}
+
+body.is-resizing-layout {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.is-resizing-layout.is-resizing-vertical {
+  cursor: row-resize;
 }
 
 .event-log {
@@ -690,6 +764,11 @@ ul.ocr-models {
 
   .app-grid {
     grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .splitter {
+    display: none;
   }
 
   .control-panel {

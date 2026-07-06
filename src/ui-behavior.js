@@ -653,6 +653,115 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function scaledMinimums(minimums, total) {
+  const safeMinimums = minimums.map((value) => Math.max(1, intOr(value, 1)));
+  const safeTotal = Math.max(1, intOr(total, 1));
+  const minTotal = safeMinimums.reduce((sum, value) => sum + value, 0);
+  if (minTotal <= safeTotal) {
+    return safeMinimums;
+  }
+  const scale = safeTotal / minTotal;
+  return safeMinimums.map((value) => Math.max(1, Math.floor(value * scale)));
+}
+
+function fitThreePaneWidths(first, second, third, total, minimums) {
+  const safeTotal = Math.max(1, intOr(total, 1));
+  const [minFirst, minSecond, minThird] = scaledMinimums(minimums, safeTotal);
+  let nextFirst = numberOr(first, minFirst);
+  let nextSecond = numberOr(second, minSecond);
+  let nextThird = numberOr(third, safeTotal - nextFirst - nextSecond);
+  const sum = nextFirst + nextSecond + nextThird;
+
+  if (Number.isFinite(sum) && sum > 0 && Math.abs(sum - safeTotal) > 0.5) {
+    const scale = safeTotal / sum;
+    nextFirst *= scale;
+    nextSecond *= scale;
+    nextThird *= scale;
+  }
+
+  nextFirst = clamp(nextFirst, minFirst, safeTotal - minSecond - minThird);
+  nextSecond = clamp(nextSecond, minSecond, safeTotal - nextFirst - minThird);
+  nextThird = safeTotal - nextFirst - nextSecond;
+
+  if (nextThird < minThird) {
+    let deficit = minThird - nextThird;
+    const secondReduction = Math.min(deficit, nextSecond - minSecond);
+    nextSecond -= secondReduction;
+    deficit -= secondReduction;
+    nextFirst -= Math.min(deficit, nextFirst - minFirst);
+    nextThird = safeTotal - nextFirst - nextSecond;
+  }
+
+  return {
+    first: Math.round(nextFirst),
+    second: Math.round(nextSecond),
+    third: Math.max(1, Math.round(nextThird)),
+  };
+}
+
+export function resizeThreePaneLayout(layout = {}, drag = {}, options = {}) {
+  const total = Math.max(1, intOr(options.total, 1));
+  const minimums = [
+    options.minFirst ?? 330,
+    options.minSecond ?? 270,
+    options.minThird ?? 270,
+  ];
+  const defaultSecond = numberOr(options.defaultSecond, 340);
+  const defaultFirst = numberOr(
+    options.defaultFirst,
+    Math.max(minimums[0], Math.round((total - defaultSecond) * 0.58)),
+  );
+  let first = numberOr(layout.first ?? layout.left, defaultFirst);
+  let second = numberOr(layout.second ?? layout.control, defaultSecond);
+  let third = numberOr(
+    layout.third ?? layout.preview,
+    total - first - second,
+  );
+  const delta = numberOr(drag.delta, 0);
+  const splitter = String(drag.splitter || "");
+
+  if (splitter === "first-second" || splitter === "targets-controls") {
+    first += delta;
+    second -= delta;
+  } else if (splitter === "second-third" || splitter === "controls-preview") {
+    second += delta;
+    third -= delta;
+  }
+
+  return fitThreePaneWidths(first, second, third, total, minimums);
+}
+
+export function resizeStackedPaneLayout(layout = {}, drag = {}, options = {}) {
+  const total = Math.max(1, intOr(options.total, 1));
+  const [minFirst, minSecond] = scaledMinimums(
+    [options.minFirst ?? 120, options.minSecond ?? 88],
+    total,
+  );
+  const defaultFirst = numberOr(options.defaultFirst, Math.round(total * 0.68));
+  let first = numberOr(layout.first ?? layout.top, defaultFirst);
+  let second = numberOr(layout.second ?? layout.bottom, total - first);
+  const sum = first + second;
+
+  if (Number.isFinite(sum) && sum > 0 && Math.abs(sum - total) > 0.5) {
+    const scale = total / sum;
+    first *= scale;
+    second *= scale;
+  }
+
+  if (String(drag.splitter || "") === "first-second" || drag.delta) {
+    const delta = numberOr(drag.delta, 0);
+    first += delta;
+    second -= delta;
+  }
+
+  first = clamp(first, minFirst, total - minSecond);
+  second = total - first;
+  return {
+    first: Math.round(first),
+    second: Math.max(1, Math.round(second)),
+  };
+}
+
 export function isHiddenWindowState(state) {
   return ["hidden", "iconic", "minimized", "withdrawn"].includes(
     String(state || "").toLowerCase(),

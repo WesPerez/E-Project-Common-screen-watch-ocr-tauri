@@ -22,6 +22,8 @@ import {
   profileTargetsEnabledStatusText,
   profileWorkflowActionState,
   recordRepeatClick,
+  resizeStackedPaneLayout,
+  resizeThreePaneLayout,
   installWheelScroll,
   scanStatusText,
   selectIndexedListItem,
@@ -46,6 +48,8 @@ import "./styles.css";
 const MONITOR_SESSION_EVENT = "screen-watch://monitor-session";
 const SOURCE_PREVIEW_SYNC_MS = 1000;
 const SOURCE_PREVIEW_BUSY_RETRY_MS = 250;
+const LAYOUT_STORAGE_KEY = "screen-watch-ocr-tauri:workbench-layout:v1";
+const MONITOR_HEARTBEAT_MS = 1000;
 
 let currentMonitors = [];
 let currentWindows = [];
@@ -66,6 +70,9 @@ let sourcePreviewLayoutBusyUntil = 0;
 let sourcePreviewRenderSignatureText = "";
 let selectedTargetIndex = null;
 let targetLastClick = {};
+let monitorHeartbeatTimer = null;
+let monitorHeartbeatLastTick = null;
+let monitorHeartbeatLastWaitingLog = 0;
 
 async function refresh() {
   const status = document.querySelector("#status");
@@ -212,6 +219,7 @@ function renderMonitoringEvent(payload) {
   result.textContent = JSON.stringify(payload, null, 2);
   status.textContent = transition.statusText;
   profileMonitoringActive = transition.nextProfileMonitoringActive;
+  trackMonitoringHeartbeat(payload);
   appendLog(monitoringEventLogText(payload, transition.statusText));
   updateRunControls();
   if (transition.shouldRefreshProfile) {
@@ -222,7 +230,9 @@ function renderMonitoringEvent(payload) {
 function monitoringEventLogText(payload, fallback) {
   const snapshot = payload?.snapshot || {};
   if (payload?.kind === "tick") {
+    const tickCount = monitorTickCount(snapshot);
     const parts = [
+      `第 ${tickCount} 轮`,
       `扫描 ${snapshot.regionCount || 0} 屏 / ${snapshot.windowCount || 0} 应用`,
       `命中 ${payload.tickHitCount || 0}`,
     ];
@@ -240,6 +250,83 @@ function monitoringEventLogText(payload, fallback) {
   return fallback || "状态更新";
 }
 
+function monitorTickCount(snapshot) {
+  const value = Number(snapshot?.tickCount ?? snapshot?.tick_count ?? 0);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+}
+
+function trackMonitoringHeartbeat(payload) {
+  const kind = String(payload?.kind || "").toLowerCase();
+  const snapshot = payload?.snapshot || payload || {};
+  if (kind === "stopped" || snapshot.running === false) {
+    stopMonitoringHeartbeat();
+    return;
+  }
+  if (kind === "tick") {
+    monitorHeartbeatLastTick = monitorTickCount(snapshot);
+    monitorHeartbeatLastWaitingLog = Date.now();
+  }
+  if (profileMonitoringActive || kind === "started") {
+    startMonitoringHeartbeat(snapshot);
+  }
+}
+
+function startMonitoringHeartbeat(snapshot = {}) {
+  monitorHeartbeatLastTick = monitorTickCount(snapshot);
+  monitorHeartbeatLastWaitingLog = Date.now();
+  if (monitorHeartbeatTimer) {
+    return;
+  }
+  monitorHeartbeatTimer = window.setInterval(
+    pollMonitoringHeartbeat,
+    MONITOR_HEARTBEAT_MS,
+  );
+}
+
+function stopMonitoringHeartbeat() {
+  if (!monitorHeartbeatTimer) {
+    return;
+  }
+  window.clearInterval(monitorHeartbeatTimer);
+  monitorHeartbeatTimer = null;
+  monitorHeartbeatLastTick = null;
+  monitorHeartbeatLastWaitingLog = 0;
+}
+
+async function pollMonitoringHeartbeat() {
+  if (!profileMonitoringActive) {
+    stopMonitoringHeartbeat();
+    return;
+  }
+  const status = document.querySelector("#status");
+  const result = document.querySelector("#scan-result");
+  try {
+    const session = await invoke("monitoring_session_status");
+    result.textContent = JSON.stringify(session, null, 2);
+    status.textContent = monitoringStatusText(session);
+    if (!session.running) {
+      profileMonitoringActive = false;
+      updateRunControls();
+      stopMonitoringHeartbeat();
+      appendLog("已停止");
+      return;
+    }
+    const tickCount = monitorTickCount(session);
+    const now = Date.now();
+    if (tickCount !== monitorHeartbeatLastTick) {
+      monitorHeartbeatLastTick = tickCount;
+      monitorHeartbeatLastWaitingLog = now;
+      return;
+    }
+    if (now - monitorHeartbeatLastWaitingLog >= MONITOR_HEARTBEAT_MS - 50) {
+      appendLog(`等待本轮扫描完成（已完成 ${tickCount} 轮）`);
+      monitorHeartbeatLastWaitingLog = now;
+    }
+  } catch (error) {
+    status.textContent = String(error);
+  }
+}
+
 function appendLog(message) {
   const log = document.querySelector("#event-log");
   if (!log) {
@@ -255,6 +342,223 @@ function appendLog(message) {
   while (log.children.length > 100) {
     log.lastElementChild?.remove();
   }
+}
+
+function readStoredWorkbenchLayout() {
+  try {
+    const raw = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function writeStoredWorkbenchLayout(layout) {
+  try {
+    window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+  } catch (_error) {
+    // Local storage is a convenience for the UI layout, not required state.
+  }
+}
+
+function workbenchResizeEnabled() {
+  return window.matchMedia("(min-width: 961px)").matches;
+}
+
+function verticalSplitterWidth() {
+  return Array.from(document.querySelectorAll(".splitter.vertical")).reduce(
+    (sum, splitter) => sum + splitter.getBoundingClientRect().width,
+    0,
+  );
+}
+
+function currentWorkbenchColumns() {
+  const left = document.querySelector(".target-panel");
+  const control = document.querySelector(".control-panel");
+  const preview = document.querySelector(".preview-panel");
+  return {
+    first: left?.getBoundingClientRect().width || 0,
+    second: control?.getBoundingClientRect().width || 0,
+    third: preview?.getBoundingClientRect().width || 0,
+  };
+}
+
+function currentTargetRows() {
+  const targets = document.querySelector("#profile-targets");
+  const log = document.querySelector(".log-panel");
+  return {
+    first: targets?.getBoundingClientRect().height || 0,
+    second: log?.getBoundingClientRect().height || 0,
+  };
+}
+
+function workbenchColumnOptions() {
+  const grid = document.querySelector("#app-grid");
+  const total = Math.max(1, (grid?.clientWidth || 1) - verticalSplitterWidth());
+  return {
+    defaultSecond: 340,
+    minFirst: 330,
+    minSecond: 270,
+    minThird: 270,
+    total,
+  };
+}
+
+function targetRowOptions() {
+  const current = currentTargetRows();
+  const total = Math.max(1, current.first + current.second);
+  return {
+    minFirst: 120,
+    minSecond: 88,
+    total,
+  };
+}
+
+function normalizeWorkbenchLayout(layout = {}) {
+  return {
+    columns: resizeThreePaneLayout(layout.columns || {}, {}, workbenchColumnOptions()),
+    rows: resizeStackedPaneLayout(layout.rows || {}, {}, targetRowOptions()),
+  };
+}
+
+function applyWorkbenchLayout(layout = {}) {
+  if (!workbenchResizeEnabled()) {
+    return;
+  }
+  const next = normalizeWorkbenchLayout(layout);
+  const root = document.querySelector(".workbench");
+  if (!root) {
+    return;
+  }
+  root.style.setProperty("--left-pane-width", `${next.columns.first}px`);
+  root.style.setProperty("--control-pane-width", `${next.columns.second}px`);
+  root.style.setProperty("--preview-pane-width", `${next.columns.third}px`);
+  root.style.setProperty("--target-list-pane-height", `${next.rows.first}px`);
+  root.style.setProperty("--log-pane-height", `${next.rows.second}px`);
+  refreshTargetListScrollbar();
+}
+
+function captureWorkbenchLayout() {
+  return {
+    columns: resizeThreePaneLayout(
+      currentWorkbenchColumns(),
+      {},
+      workbenchColumnOptions(),
+    ),
+    rows: resizeStackedPaneLayout(currentTargetRows(), {}, targetRowOptions()),
+  };
+}
+
+function setWorkbenchResizeState(splitter, dragging) {
+  splitter.classList.toggle("is-dragging", dragging);
+  document.body.classList.toggle("is-resizing-layout", dragging);
+  document.body.classList.toggle(
+    "is-resizing-vertical",
+    dragging && splitter.dataset.splitter === "targets-log",
+  );
+}
+
+function coverPreviewsForLayoutChange() {
+  markSourcePreviewLayoutBusy();
+  coverSourcePreviewFrames();
+  clearDwmPreviews();
+}
+
+function applySplitterDelta(splitterName, startLayout, delta) {
+  const layout =
+    splitterName === "targets-log"
+      ? {
+          columns: startLayout.columns,
+          rows: resizeStackedPaneLayout(
+            startLayout.rows,
+            { delta, splitter: "first-second" },
+            targetRowOptions(),
+          ),
+        }
+      : {
+          columns: resizeThreePaneLayout(
+            startLayout.columns,
+            { delta, splitter: splitterName },
+            workbenchColumnOptions(),
+          ),
+          rows: startLayout.rows,
+        };
+  applyWorkbenchLayout(layout);
+  return layout;
+}
+
+function beginWorkbenchSplitterDrag(event) {
+  if (!workbenchResizeEnabled() || event.button !== 0) {
+    return;
+  }
+  event.preventDefault();
+  const splitter = event.currentTarget;
+  const splitterName = splitter.dataset.splitter;
+  const isHorizontal = splitterName === "targets-log";
+  const startLayout = captureWorkbenchLayout();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  let latestLayout = startLayout;
+
+  setWorkbenchResizeState(splitter, true);
+  coverPreviewsForLayoutChange();
+
+  const move = (moveEvent) => {
+    moveEvent.preventDefault();
+    const delta = isHorizontal
+      ? moveEvent.clientY - startY
+      : moveEvent.clientX - startX;
+    latestLayout = applySplitterDelta(splitterName, startLayout, delta);
+    coverPreviewsForLayoutChange();
+  };
+  const finish = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", finish);
+    window.removeEventListener("pointercancel", finish);
+    setWorkbenchResizeState(splitter, false);
+    writeStoredWorkbenchLayout(latestLayout);
+    refreshTargetListScrollbar();
+    markSourcePreviewLayoutBusy(SOURCE_PREVIEW_BUSY_RETRY_MS);
+    scheduleSourcePreviews(SOURCE_PREVIEW_BUSY_RETRY_MS);
+  };
+
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", finish);
+  window.addEventListener("pointercancel", finish);
+}
+
+function nudgeWorkbenchSplitter(event) {
+  const splitter = event.currentTarget;
+  const splitterName = splitter.dataset.splitter;
+  const isHorizontal = splitterName === "targets-log";
+  const step = event.shiftKey ? 80 : 24;
+  let delta = 0;
+
+  if (isHorizontal && event.key === "ArrowUp") {
+    delta = -step;
+  } else if (isHorizontal && event.key === "ArrowDown") {
+    delta = step;
+  } else if (!isHorizontal && event.key === "ArrowLeft") {
+    delta = -step;
+  } else if (!isHorizontal && event.key === "ArrowRight") {
+    delta = step;
+  } else {
+    return;
+  }
+
+  event.preventDefault();
+  const next = applySplitterDelta(splitterName, captureWorkbenchLayout(), delta);
+  writeStoredWorkbenchLayout(next);
+  coverPreviewsForLayoutChange();
+  scheduleSourcePreviews(SOURCE_PREVIEW_BUSY_RETRY_MS);
+}
+
+function installWorkbenchSplitters() {
+  applyWorkbenchLayout(readStoredWorkbenchLayout());
+  document.querySelectorAll(".splitter").forEach((splitter) => {
+    splitter.addEventListener("pointerdown", beginWorkbenchSplitterDrag);
+    splitter.addEventListener("keydown", nudgeWorkbenchSplitter);
+  });
 }
 
 function seedScanConfig() {
@@ -1068,6 +1372,7 @@ async function stopMonitoring() {
   try {
     const session = await invoke("stop_monitoring_session");
     profileMonitoringActive = false;
+    stopMonitoringHeartbeat();
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     appendLog("已请求停止");
@@ -1729,6 +2034,7 @@ async function startProfileMonitoring() {
       options: requireProfileOptions("start-monitoring"),
     });
     profileMonitoringActive = true;
+    startMonitoringHeartbeat(session);
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     appendLog("监控中");
@@ -1865,6 +2171,7 @@ installCustomCheckIndicators(document);
 const profileTargetList = document.querySelector("#profile-targets");
 installWheelScroll(profileTargetList);
 installAutohideScrollbar(profileTargetList);
+installWorkbenchSplitters();
 document.addEventListener("click", hideTargetContextMenu);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
@@ -1887,6 +2194,7 @@ window.addEventListener(
   true,
 );
 window.addEventListener("resize", () => {
+  applyWorkbenchLayout(readStoredWorkbenchLayout());
   markSourcePreviewLayoutBusy();
   coverSourcePreviewFrames();
   clearDwmPreviews();

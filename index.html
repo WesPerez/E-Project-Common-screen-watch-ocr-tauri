@@ -28,7 +28,7 @@
         <p id="status">Loading...</p>
       </header>
 
-      <section class="app-grid">
+      <section id="app-grid" class="app-grid">
         <section class="panel target-panel" aria-labelledby="targets-title">
           <div class="panel-head">
             <h1 id="targets-title">匹配图片</h1>
@@ -43,6 +43,14 @@
             <button id="profile-clear-all" type="button">清空</button>
           </div>
           <ul id="profile-targets" class="target-list autohide-scrollbar"></ul>
+          <div
+            class="splitter horizontal"
+            data-splitter="targets-log"
+            role="separator"
+            aria-label="调整图片列表和日志高度"
+            aria-orientation="horizontal"
+            tabindex="0"
+          ></div>
 
           <section class="log-panel" aria-labelledby="log-title">
             <div class="panel-head compact">
@@ -59,6 +67,15 @@
             </table>
           </section>
         </section>
+
+        <div
+          class="splitter vertical"
+          data-splitter="targets-controls"
+          role="separator"
+          aria-label="调整图片区和设置区宽度"
+          aria-orientation="vertical"
+          tabindex="0"
+        ></div>
 
         <section class="panel control-panel" aria-label="监控设置">
           <section class="control-group">
@@ -119,6 +136,15 @@
             <button id="open-evidence-dir" type="button">打开证据目录</button>
           </section>
         </section>
+
+        <div
+          class="splitter vertical"
+          data-splitter="controls-preview"
+          role="separator"
+          aria-label="调整设置区和预览区宽度"
+          aria-orientation="vertical"
+          tabindex="0"
+        ></div>
 
         <section class="panel preview-panel" aria-labelledby="preview-title">
           <div class="panel-head">

@@ -15,7 +15,7 @@ use serde::Serialize;
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
     thread::{self, JoinHandle},
@@ -74,12 +74,14 @@ pub trait MonitorSessionHitSink: Send + Sync + 'static {
 pub struct MonitorSessionState {
     worker: Mutex<Option<MonitorWorker>>,
     snapshot: Arc<Mutex<MonitorSessionSnapshot>>,
+    active_generation: Arc<AtomicU64>,
 }
 
 #[derive(Debug)]
 struct MonitorWorker {
     stop: Arc<AtomicBool>,
     handle: JoinHandle<()>,
+    generation: u64,
 }
 
 impl Default for MonitorSessionSnapshot {
@@ -118,9 +120,7 @@ impl MonitorSessionState {
             return Err("monitoring session has no screen or window sources".to_string());
         }
         self.reap_finished_worker()?;
-        if self.request_stop_if_worker_running()? {
-            return Err("previous monitoring session is still stopping".to_string());
-        }
+        self.request_stop_current_worker()?;
 
         let poll_interval = poll_interval_duration(config.poll_interval_seconds);
         let settings = OcrSettings::from_env();
@@ -137,6 +137,8 @@ impl MonitorSessionState {
         }
         let stop = Arc::new(AtomicBool::new(false));
         let snapshot = Arc::clone(&self.snapshot);
+        let active_generation = Arc::clone(&self.active_generation);
+        let generation = active_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let thread_stop = Arc::clone(&stop);
         let started_at = clock_now().time_text;
         let initial = MonitorSessionSnapshot {
@@ -167,6 +169,8 @@ impl MonitorSessionState {
                 poll_interval,
                 thread_stop,
                 snapshot,
+                active_generation,
+                generation,
                 beeper,
                 hit_sink,
                 event_sink,
@@ -176,8 +180,11 @@ impl MonitorSessionState {
         *self
             .worker
             .lock()
-            .map_err(|_| "monitor session worker is poisoned".to_string())? =
-            Some(MonitorWorker { stop, handle });
+            .map_err(|_| "monitor session worker is poisoned".to_string())? = Some(MonitorWorker {
+            stop,
+            handle,
+            generation,
+        });
         Ok(initial)
     }
 
@@ -199,27 +206,17 @@ impl MonitorSessionState {
             .worker
             .lock()
             .map_err(|_| "monitor session worker is poisoned".to_string())?
-            .as_ref()
-            .map(|worker| Arc::clone(&worker.stop));
-        if let Some(stop) = worker {
-            stop.store(true, Ordering::SeqCst);
+            .take();
+        if let Some(worker) = worker {
+            worker.stop.store(true, Ordering::SeqCst);
+            if worker.handle.is_finished() {
+                worker
+                    .handle
+                    .join()
+                    .map_err(|_| "monitor session thread panicked".to_string())?;
+            }
         }
         mark_stopped(&self.snapshot).map(|_| ())
-    }
-
-    fn request_stop_if_worker_running(&self) -> Result<bool, String> {
-        let worker = self
-            .worker
-            .lock()
-            .map_err(|_| "monitor session worker is poisoned".to_string())?
-            .as_ref()
-            .map(|worker| Arc::clone(&worker.stop));
-        if let Some(stop) = worker {
-            stop.store(true, Ordering::SeqCst);
-            mark_stopped(&self.snapshot)?;
-            return Ok(true);
-        }
-        Ok(false)
     }
 
     fn reap_finished_worker(&self) -> Result<(), String> {
@@ -237,11 +234,12 @@ impl MonitorSessionState {
                 .map_err(|_| "monitor session worker is poisoned".to_string())?
                 .take();
             if let Some(worker) = worker {
+                let generation = worker.generation;
                 worker
                     .handle
                     .join()
                     .map_err(|_| "monitor session thread panicked".to_string())?;
-                mark_stopped(&self.snapshot)?;
+                mark_stopped_if_active(&self.snapshot, &self.active_generation, generation)?;
             }
         }
         Ok(())
@@ -254,12 +252,14 @@ fn monitor_loop(
     poll_interval: Duration,
     stop: Arc<AtomicBool>,
     snapshot: Arc<Mutex<MonitorSessionSnapshot>>,
+    active_generation: Arc<AtomicU64>,
+    generation: u64,
     beeper: AlarmBeepState,
     hit_sink: Option<Arc<dyn MonitorSessionHitSink>>,
     event_sink: Arc<dyn MonitorSessionEventSink>,
 ) {
     let mut window_modes = WindowCaptureModeCache::default();
-    while !stop.load(Ordering::SeqCst) {
+    while !stop.load(Ordering::SeqCst) && active_generation.load(Ordering::SeqCst) == generation {
         let clock = clock_now();
         let mut tick_hits = 0usize;
         let mut tick_target_ids = Vec::new();
@@ -296,6 +296,9 @@ fn monitor_loop(
                 }
             }
         }
+        if stop.load(Ordering::SeqCst) || active_generation.load(Ordering::SeqCst) != generation {
+            break;
+        }
         if tick_hits > 0 {
             if let Some(hit_sink) = &hit_sink {
                 if let Err(err) = hit_sink.record(&tick_target_ids) {
@@ -306,6 +309,8 @@ fn monitor_loop(
         }
         if let Some(event) = record_monitor_tick(
             &snapshot,
+            &active_generation,
+            generation,
             &stop,
             &clock,
             &sources,
@@ -316,7 +321,7 @@ fn monitor_loop(
         }
         sleep_interruptibly(poll_interval, &stop);
     }
-    if let Ok(Some(snapshot)) = mark_stopped(&snapshot) {
+    if let Ok(Some(snapshot)) = mark_stopped_if_active(&snapshot, &active_generation, generation) {
         event_sink.emit(stopped_event(snapshot));
     }
 }
@@ -473,6 +478,17 @@ fn mark_stopped(
     Ok(None)
 }
 
+fn mark_stopped_if_active(
+    snapshot: &Arc<Mutex<MonitorSessionSnapshot>>,
+    active_generation: &AtomicU64,
+    generation: u64,
+) -> Result<Option<MonitorSessionSnapshot>, String> {
+    if active_generation.load(Ordering::SeqCst) != generation {
+        return Ok(None);
+    }
+    mark_stopped(snapshot)
+}
+
 fn started_event(snapshot: MonitorSessionSnapshot) -> MonitorSessionEvent {
     MonitorSessionEvent {
         kind: MonitorSessionEventKind::Started,
@@ -493,13 +509,21 @@ fn stopped_event(snapshot: MonitorSessionSnapshot) -> MonitorSessionEvent {
 
 fn record_monitor_tick(
     snapshot: &Arc<Mutex<MonitorSessionSnapshot>>,
+    active_generation: &AtomicU64,
+    generation: u64,
     stop: &AtomicBool,
     clock: &MonitorClock,
     sources: &MonitorSources,
     tick_hits: u64,
     tick_error: Option<String>,
 ) -> Option<MonitorSessionEvent> {
+    if active_generation.load(Ordering::SeqCst) != generation {
+        return None;
+    }
     let mut status = snapshot.lock().ok()?;
+    if active_generation.load(Ordering::SeqCst) != generation {
+        return None;
+    }
     status.running = !stop.load(Ordering::SeqCst);
     status.last_tick = Some(clock.time_text.clone());
     status.tick_count = status.tick_count.saturating_add(1);
@@ -574,7 +598,7 @@ mod tests {
     use std::{
         fs,
         sync::{
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicU64, Ordering},
             Arc, Mutex,
         },
         thread,
@@ -615,12 +639,17 @@ mod tests {
             thread::sleep(Duration::from_millis(150));
         });
         let session = MonitorSessionState {
-            worker: Mutex::new(Some(MonitorWorker { stop, handle })),
+            worker: Mutex::new(Some(MonitorWorker {
+                stop,
+                handle,
+                generation: 1,
+            })),
             snapshot: Arc::new(Mutex::new(MonitorSessionSnapshot {
                 running: true,
                 started_at: Some("start".to_string()),
                 ..MonitorSessionSnapshot::default()
             })),
+            active_generation: Arc::new(AtomicU64::new(1)),
         };
 
         let started = Instant::now();
@@ -628,16 +657,45 @@ mod tests {
 
         assert!(started.elapsed() < Duration::from_millis(100));
         assert!(!status.running);
-        assert!(session.worker.lock().unwrap().is_some());
-        for _ in 0..30 {
-            if session.snapshot().unwrap().stopped_at.is_some()
-                && session.worker.lock().unwrap().is_none()
-            {
-                return;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
         assert!(session.worker.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn stale_worker_tick_does_not_overwrite_new_session_snapshot() {
+        let snapshot = Arc::new(Mutex::new(MonitorSessionSnapshot {
+            running: true,
+            started_at: Some("new-start".to_string()),
+            tick_count: 7,
+            hit_count: 2,
+            ..MonitorSessionSnapshot::default()
+        }));
+        let active_generation = AtomicU64::new(2);
+        let sources = MonitorSources::new(vec![resolved_region("old")], Vec::new(), Vec::new());
+        let stop = AtomicBool::new(true);
+        let clock = MonitorClock {
+            now_seconds: 8.0,
+            time_text: "old-tick".to_string(),
+            stamp: "old-stamp".to_string(),
+        };
+
+        let event = record_monitor_tick(
+            &snapshot,
+            &active_generation,
+            1,
+            &stop,
+            &clock,
+            &sources,
+            99,
+            Some("old error".to_string()),
+        );
+
+        assert_eq!(event, None);
+        let status = snapshot.lock().unwrap().clone();
+        assert!(status.running);
+        assert_eq!(status.started_at.as_deref(), Some("new-start"));
+        assert_eq!(status.tick_count, 7);
+        assert_eq!(status.hit_count, 2);
+        assert_eq!(status.last_error, None);
     }
 
     #[test]
@@ -686,6 +744,8 @@ mod tests {
 
         let event = record_monitor_tick(
             &snapshot,
+            &AtomicU64::new(0),
+            0,
             &stop,
             &clock,
             &sources,
@@ -721,7 +781,17 @@ mod tests {
             stamp: "tick-stamp".to_string(),
         };
 
-        let event = record_monitor_tick(&snapshot, &stop, &clock, &sources, 0, None).unwrap();
+        let event = record_monitor_tick(
+            &snapshot,
+            &AtomicU64::new(0),
+            0,
+            &stop,
+            &clock,
+            &sources,
+            0,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(event.kind, MonitorSessionEventKind::Tick);
         assert!(!event.snapshot.running);
@@ -750,7 +820,17 @@ mod tests {
             stamp: "tick-stamp".to_string(),
         };
 
-        let event = record_monitor_tick(&snapshot, &stop, &clock, &sources, 0, None).unwrap();
+        let event = record_monitor_tick(
+            &snapshot,
+            &AtomicU64::new(0),
+            0,
+            &stop,
+            &clock,
+            &sources,
+            0,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(event.snapshot.region_count, 1);
         assert_eq!(event.snapshot.window_count, 2);
@@ -788,6 +868,8 @@ mod tests {
 
         let event = record_monitor_tick(
             &snapshot,
+            &AtomicU64::new(0),
+            0,
             &stop,
             &clock,
             &sources,
