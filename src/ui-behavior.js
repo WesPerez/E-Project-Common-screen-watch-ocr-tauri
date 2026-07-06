@@ -617,6 +617,29 @@ export function monitoringStatusText(snapshot, options = {}) {
   return text;
 }
 
+export function monitoringProgressLogText(snapshot = {}, options = {}) {
+  const tickCount = countFromEitherCase(snapshot, "tickCount", "tick_count");
+  const tickHitCount = countFromEitherCase(
+    options,
+    "tickHitCount",
+    "tick_hit_count",
+  );
+  const hitCount = countFromEitherCase(snapshot, "hitCount", "hit_count");
+  const regionCount = countFromEitherCase(snapshot, "regionCount", "region_count");
+  const windowCount = countFromEitherCase(snapshot, "windowCount", "window_count");
+  const parts = [
+    `第 ${tickCount} 轮`,
+    `扫描 ${regionCount} 屏 / ${windowCount} 应用`,
+    `本轮命中 ${tickHitCount}`,
+    `累计命中 ${hitCount}`,
+  ];
+  const tickError = String(options.tickError || options.tick_error || "").trim();
+  if (tickError) {
+    parts.push(tickError);
+  }
+  return parts.join("，");
+}
+
 export function monitoringEventTransition(payload = {}, state = {}) {
   const snapshot = payload?.snapshot || payload || {};
   const kind = String(payload?.kind || "").toLowerCase();

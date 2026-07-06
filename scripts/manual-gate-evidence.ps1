@@ -55,6 +55,10 @@ function Get-ManualGateDefinitions {
             Title = "Template Gallery Visual Workflow Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "profile-monitoring-restart-smoke"
+            Title = "Profile Monitoring Restart Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "packaged-tray-menu-and-icon-smoke"
             Title = "Packaged Tray Menu And Icon Smoke"
         },

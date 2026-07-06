@@ -80,6 +80,8 @@ Expected evidence:
 - `rustCoreTests`, `tauriTests`, and `ocrFeatureTests` meet current baselines.
 - `liteSizeGate: passed`.
 - `requiredRealGates: 19 workspace gates, 2 OCR gates`.
+- `manualGateEvidenceStatus:` includes the profile monitoring restart gate when
+  validating final evidence.
 
 ## Desktop Backend Smoke
 
@@ -189,6 +191,31 @@ Expected evidence:
 - Thumbnails have stable dimensions and no bottom-border clipping.
 - Drag/drop and row-button reorder produce the expected order.
 - Only template files under `templates\` are removed by delete/clear actions.
+
+## Profile Monitoring Restart Smoke
+
+Repeatable automated evidence can be collected against the current packaged
+release exe on an interactive Windows desktop:
+
+```powershell
+npm run webview:monitoring:smoke
+```
+
+Manual fallback steps:
+
+- Select one stable app-window source and no screen source.
+- Capture that source as a template.
+- Click `开始监控`.
+- Confirm the log table keeps adding progress rows while monitoring runs.
+- Click `停止监控`, then click `开始监控` again.
+- Stop the second run and confirm the run button returns to `开始监控`.
+
+Expected evidence:
+
+- Screenshot or video of the prepared template and the running monitor state.
+- Log or result JSON proving positive tick count and hit count.
+- Evidence that start/stop/restart monitoring restores the button state and does
+  not leave an app process running after the smoke exits.
 
 ## Packaged Tray Menu And Icon Smoke
 

@@ -1,12 +1,12 @@
 Gate: WebView Source Preview Visual Smoke
 Completion status: pass
-Date/time: 2026-07-06T19:00:48.521Z
+Date/time: 2026-07-06T19:31:58.116Z
 Machine: DESKTOP-9FRQ8VV
 Worktree note: screen-watch-ocr-tauri is not a git repository
-Command(s) and exit code(s): node scripts/webview-visual-smoke.mjs --gate all; exit 0
-Release build-info hash: executableSha256=3f25ed430d37a04b9f994d460bc1c1d6cc61305e7604f19a70e4608ab092b08b; buildInfo=target\release\screen-watch-ocr-tauri.build-info.json
-Model/image/evidence dirs: inputDir=E:\Project\Common\screen-watch-ocr-tauri\target\webview-visual-smoke\20260707-030029\inputs; localAppData=E:\Project\Common\screen-watch-ocr-tauri\target\webview-visual-smoke\20260707-030029\localappdata; evidenceLogDir=E:\Project\Common\screen-watch-ocr-tauri\docs\manual-gate-evidence\logs
+Command(s) and exit code(s): node scripts/webview-visual-smoke.mjs --gate source; exit 0
+Release build-info hash: executableSha256=daa05bed300bbe52937a7c37bfd53a8f41ffc6dff5dd1555e2154b147ea17cbc; buildInfo=target\release\screen-watch-ocr-tauri.build-info.json
+Model/image/evidence dirs: inputDir=E:\Project\Common\screen-watch-ocr-tauri\target\webview-visual-smoke\20260707-033150\inputs; localAppData=E:\Project\Common\screen-watch-ocr-tauri\target\webview-visual-smoke\20260707-033150\localappdata; evidenceLogDir=E:\Project\Common\screen-watch-ocr-tauri\docs\manual-gate-evidence\logs
 Observed result: automated real WebView2/CDP smoke selected a physical screen and visible helper app-window source, refreshed source cards without unexpected failed previews, captured bitmap/DWM-backed cards, scrolled a preview card partially offscreen, resized the app window, restored the preview area, and refreshed again without stale/error cards
-Evidence files: docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-030029-result.json; docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-030029-app.log; docs\manual-gate-evidence\logs\webview-source-preview-initial-20260707-030029.png; docs\manual-gate-evidence\logs\webview-source-preview-partial-scroll-20260707-030029.png; docs\manual-gate-evidence\logs\webview-source-preview-restored-20260707-030029.png
+Evidence files: docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-033150-result.json; docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-033150-app.log; docs\manual-gate-evidence\logs\webview-source-preview-initial-20260707-033150.png; docs\manual-gate-evidence\logs\webview-source-preview-partial-scroll-20260707-033150.png; docs\manual-gate-evidence\logs\webview-source-preview-restored-20260707-033150.png
 Cleanup performed: stopped the test-owned app process and helper window process; retained isolated target/webview-visual-smoke run directory and evidence screenshots/logs for audit
 Remaining risk: proves the current packaged WebView2/runtime path on this interactive desktop; it does not prove every possible monitor topology or every third-party app window

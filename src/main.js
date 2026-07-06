@@ -15,6 +15,7 @@ import {
   installCustomCheckIndicators,
   layoutBusy,
   monitoringEventTransition,
+  monitoringProgressLogText,
   monitoringStatusText,
   previewStatusText,
   profileImportRequest,
@@ -74,6 +75,9 @@ let targetLastClick = {};
 let monitorHeartbeatTimer = null;
 let monitorHeartbeatLastTick = null;
 let monitorHeartbeatLastWaitingLog = 0;
+let monitorProgressLogLastTick = null;
+let monitorProgressLogLastAt = 0;
+let monitoringOperationPending = "";
 
 async function refresh() {
   const status = document.querySelector("#status");
@@ -223,7 +227,15 @@ function renderMonitoringEvent(payload) {
   monitoringActive = transition.nextMonitoringActive;
   profileMonitoringActive = transition.nextProfileMonitoringActive;
   trackMonitoringHeartbeat(payload);
-  appendLog(monitoringEventLogText(payload, transition.statusText));
+  if (payload?.kind === "tick") {
+    appendMonitoringProgressLog(
+      transition.snapshot,
+      payload,
+      { forceFirst: true },
+    );
+  } else {
+    appendLog(monitoringEventLogText(payload, transition.statusText));
+  }
   updateRunControls();
   if (transition.shouldRefreshProfile) {
     loadProfile();
@@ -233,16 +245,7 @@ function renderMonitoringEvent(payload) {
 function monitoringEventLogText(payload, fallback) {
   const snapshot = payload?.snapshot || {};
   if (payload?.kind === "tick") {
-    const tickCount = monitorTickCount(snapshot);
-    const parts = [
-      `第 ${tickCount} 轮`,
-      `扫描 ${snapshot.regionCount || 0} 屏 / ${snapshot.windowCount || 0} 应用`,
-      `命中 ${payload.tickHitCount || 0}`,
-    ];
-    if (payload.tickError) {
-      parts.push(payload.tickError);
-    }
-    return parts.join("，");
+    return monitoringProgressLogText(snapshot, payload);
   }
   if (payload?.kind === "started") {
     return "监控中";
@@ -296,6 +299,33 @@ function stopMonitoringHeartbeat() {
   monitorHeartbeatLastWaitingLog = 0;
 }
 
+function resetMonitoringProgressLog(snapshot = {}) {
+  monitorProgressLogLastTick = monitorTickCount(snapshot) || null;
+  monitorProgressLogLastAt = 0;
+}
+
+function appendMonitoringProgressLog(snapshot = {}, payload = {}, options = {}) {
+  const tickCount = monitorTickCount(snapshot);
+  if (tickCount <= 0) {
+    return false;
+  }
+  const now = Date.now();
+  const firstProgress = monitorProgressLogLastTick === null;
+  if (tickCount === monitorProgressLogLastTick) {
+    return false;
+  }
+  if (!firstProgress && !options.force && now - monitorProgressLogLastAt < 900) {
+    return false;
+  }
+  if (firstProgress && options.forceFirst === false) {
+    return false;
+  }
+  monitorProgressLogLastTick = tickCount;
+  monitorProgressLogLastAt = now;
+  appendLog(monitoringProgressLogText(snapshot, payload));
+  return true;
+}
+
 async function pollMonitoringHeartbeat() {
   if (!monitoringActive) {
     stopMonitoringHeartbeat();
@@ -320,6 +350,7 @@ async function pollMonitoringHeartbeat() {
     if (tickCount !== monitorHeartbeatLastTick) {
       monitorHeartbeatLastTick = tickCount;
       monitorHeartbeatLastWaitingLog = now;
+      appendMonitoringProgressLog(session, {}, { forceFirst: true });
       return;
     }
     if (now - monitorHeartbeatLastWaitingLog >= MONITOR_HEARTBEAT_MS - 50) {
@@ -1362,6 +1393,7 @@ async function startMonitoring() {
     });
     monitoringActive = Boolean(session.running);
     profileMonitoringActive = false;
+    resetMonitoringProgressLog(session);
     startMonitoringHeartbeat(session);
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
@@ -1383,6 +1415,7 @@ async function stopMonitoring() {
     profileMonitoringActive = false;
     if (!monitoringActive) {
       stopMonitoringHeartbeat();
+      resetMonitoringProgressLog();
     }
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
@@ -1391,6 +1424,11 @@ async function stopMonitoring() {
   } catch (error) {
     result.textContent = String(error);
     status.textContent = String(error);
+    monitoringActive = false;
+    profileMonitoringActive = false;
+    stopMonitoringHeartbeat();
+    resetMonitoringProgressLog();
+    updateRunControls();
   }
 }
 
@@ -2041,8 +2079,13 @@ async function openEvidenceDir() {
 }
 
 async function startProfileMonitoring() {
+  if (monitoringOperationPending) {
+    return;
+  }
   const status = document.querySelector("#status");
   const result = document.querySelector("#scan-result");
+  monitoringOperationPending = "start";
+  updateRunControls();
   status.textContent = "启动 profile 监控...";
   try {
     await persistProfileSources();
@@ -2052,6 +2095,7 @@ async function startProfileMonitoring() {
     });
     monitoringActive = Boolean(session.running);
     profileMonitoringActive = Boolean(session.running);
+    resetMonitoringProgressLog(session);
     startMonitoringHeartbeat(session);
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
@@ -2060,12 +2104,25 @@ async function startProfileMonitoring() {
   } catch (error) {
     result.textContent = String(error);
     status.textContent = String(error);
+  } finally {
+    monitoringOperationPending = "";
+    updateRunControls();
   }
 }
 
 async function toggleProfileMonitoring() {
+  if (monitoringOperationPending) {
+    return;
+  }
   if (profileMonitoringActive) {
-    await stopMonitoring();
+    monitoringOperationPending = "stop";
+    updateRunControls();
+    try {
+      await stopMonitoring();
+    } finally {
+      monitoringOperationPending = "";
+      updateRunControls();
+    }
   } else {
     await startProfileMonitoring();
   }
@@ -2076,8 +2133,15 @@ function updateRunControls() {
   if (!button) {
     return;
   }
-  button.textContent = profileMonitoringActive ? "停止监控" : "开始监控";
+  if (monitoringOperationPending === "start") {
+    button.textContent = "正在启动...";
+  } else if (monitoringOperationPending === "stop") {
+    button.textContent = "正在停止...";
+  } else {
+    button.textContent = profileMonitoringActive ? "停止监控" : "开始监控";
+  }
   button.classList.toggle("is-running", profileMonitoringActive);
+  button.disabled = Boolean(monitoringOperationPending);
 }
 
 document.querySelector("#refresh").addEventListener("click", refresh);

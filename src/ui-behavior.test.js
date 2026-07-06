@@ -21,6 +21,7 @@ import {
   missingSourceSummary,
   monitorErrorSummary,
   monitoringEventTransition,
+  monitoringProgressLogText,
   monitoringStatusText,
   previewStatusText,
   profileImportRequest,
@@ -1007,6 +1008,24 @@ test("monitoring status prefers current tick error text", () => {
   );
 
   assert.equal(status, "监控中，错误: new capture error");
+});
+
+test("monitoring progress log text reports heartbeat tick details", () => {
+  assert.equal(
+    monitoringProgressLogText(
+      {
+        hitCount: 12,
+        regionCount: 2,
+        tickCount: 8,
+        windowCount: 1,
+      },
+      {
+        tickError: "capture failed",
+        tickHitCount: 3,
+      },
+    ),
+    "第 8 轮，扫描 2 屏 / 1 应用，本轮命中 3，累计命中 12，capture failed",
+  );
 });
 
 test("monitoring event transition refreshes profile only for profile tick hits", () => {

@@ -54,6 +54,7 @@ const screenshots = [];
 const gateResults = {
   source: null,
   gallery: null,
+  monitoring: null,
 };
 
 let appProcess = null;
@@ -540,6 +541,32 @@ async function galleryState() {
   }))()`);
 }
 
+async function monitoringState() {
+  return evalJs(`(() => {
+    const resultText = document.querySelector('#scan-result')?.textContent || '';
+    let session = null;
+    try {
+      session = resultText.trim() ? JSON.parse(resultText) : null;
+    } catch (_error) {
+      session = null;
+    }
+    const rows = [...document.querySelectorAll('#event-log tr')].map((row) => row.textContent || '');
+    return {
+      status: document.querySelector('#status')?.textContent || '',
+      buttonText: document.querySelector('#profile-monitor-start')?.textContent || '',
+      buttonDisabled: Boolean(document.querySelector('#profile-monitor-start')?.disabled),
+      logRows: rows,
+      progressRows: rows.filter((text) => text.includes('第 ') && text.includes('扫描')),
+      startedRows: rows.filter((text) => text.includes('监控中')).length,
+      stoppedRows: rows.filter((text) => text.includes('停止')).length,
+      session,
+      tickCount: Number(session?.tickCount || session?.tick_count || 0),
+      hitCount: Number(session?.hitCount || session?.hit_count || 0),
+      running: Boolean(session?.running),
+    };
+  })()`);
+}
+
 async function scrollProfileTargetsIntoView() {
   await evalJs(`(() => {
     const target = document.querySelector('#profile-targets') || document.querySelector('#profile-summary');
@@ -570,6 +597,42 @@ async function selectVisualSources() {
     if (!checkbox.checked) {
       checkbox.checked = true;
       checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    return {
+      ok: true,
+      selectedWindow: label.textContent,
+      monitorCount: monitorChecks.length,
+    };
+  })()`);
+}
+
+async function selectOnlyHelperWindowSource() {
+  return evalJs(`(() => {
+    const monitorChecks = [...document.querySelectorAll('#monitors input[type="checkbox"]:not(:disabled)')];
+    for (const checkbox of monitorChecks) {
+      if (checkbox.checked) {
+        checkbox.checked = false;
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    const remembered = document.querySelector('#profile-use-remembered-windows');
+    if (remembered && !remembered.checked) {
+      remembered.checked = true;
+      remembered.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    const labels = [...document.querySelectorAll('#windows label')];
+    const helperTitle = ${JSON.stringify(helperTitle)};
+    const label = labels.find((item) => item.textContent.includes(helperTitle));
+    if (!label) {
+      return { ok: false, reason: 'helper window source not found' };
+    }
+    for (const item of labels) {
+      const checkbox = item.querySelector('input[type="checkbox"]');
+      const shouldCheck = item === label;
+      if (checkbox && checkbox.checked !== shouldCheck) {
+        checkbox.checked = shouldCheck;
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     }
     return {
       ok: true,
@@ -755,6 +818,113 @@ async function waitForCardCount(count) {
     const state = await galleryState();
     return state.cards.length === count ? state : null;
   }, `${count} profile target card(s)`, 25000, 500);
+}
+
+async function setMonitoringSmokeInputs() {
+  await evalJs(`(() => {
+    const setValue = (selector, value) => {
+      const input = document.querySelector(selector);
+      if (!input) return;
+      input.value = value;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setValue('#profile-interval-ms', '500');
+    setValue('#profile-cooldown', '0');
+    setValue('#profile-threshold', '0.9');
+    setValue('#profile-scales', '1.0');
+    setValue('#profile-max-templates', '10');
+    setValue('#profile-max-alerts', '10');
+    const beep = document.querySelector('#profile-beep');
+    if (beep?.checked) {
+      beep.checked = false;
+      beep.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    return true;
+  })()`);
+}
+
+async function clearAllProfileTargetsForSmoke() {
+  await evalJs(`(() => {
+    window.confirm = () => true;
+    document.querySelector('#profile-clear-all')?.click();
+    return true;
+  })()`);
+  await waitForCardCount(0);
+}
+
+async function waitForMonitoringStart(description) {
+  return waitFor(async () => {
+    const state = await monitoringState();
+    return state.buttonText === "停止监控" &&
+      !state.buttonDisabled &&
+      state.running &&
+      state.tickCount > 0 &&
+      state.hitCount > 0 &&
+      state.progressRows.length > 0
+      ? state
+      : null;
+  }, description, 35000, 500);
+}
+
+async function stopMonitoringFromUi(description) {
+  await clickSelector("#profile-monitor-start");
+  return waitFor(async () => {
+    const state = await monitoringState();
+    return state.buttonText === "开始监控" && !state.buttonDisabled && !state.running
+      ? state
+      : null;
+  }, description, 20000, 300);
+}
+
+async function runMonitoringGate() {
+  log("running profile monitoring restart gate");
+  await waitForReadyStatus();
+  await clickSelector("#refresh-windows");
+  await waitForReadyStatus();
+  const selected = await waitFor(async () => {
+    const result = await selectOnlyHelperWindowSource();
+    return result.ok ? result : null;
+  }, "exclusive helper window source", 20000, 500);
+  await setMonitoringSmokeInputs();
+  await clearAllProfileTargetsForSmoke();
+  await clickSelector("#profile-capture-target");
+  const capturedTargetState = await waitForCardCount(1);
+  await scrollProfileTargetsIntoView();
+  const preparedScreenshot = await captureScreenshot("profile-monitoring-prepared");
+
+  await clickSelector("#profile-monitor-start");
+  const firstRunState = await waitForMonitoringStart("first monitoring run with hits");
+  await sleep(2200);
+  const firstProgressState = await waitFor(async () => {
+    const state = await monitoringState();
+    return state.progressRows.length >= 2 && state.tickCount > firstRunState.tickCount
+      ? state
+      : null;
+  }, "heartbeat progress log rows during first run", 15000, 500);
+  const firstRunScreenshot = await captureScreenshot("profile-monitoring-running");
+  const firstStopState = await stopMonitoringFromUi("first monitoring stop");
+
+  await sleep(700);
+  await clickSelector("#profile-monitor-start");
+  const secondRunState = await waitForMonitoringStart("second monitoring run after stop");
+  await sleep(1200);
+  const secondProgressState = await monitoringState();
+  const secondStopState = await stopMonitoringFromUi("second monitoring stop");
+
+  const result = {
+    status: "pass",
+    selected,
+    capturedTargetState,
+    firstRunState,
+    firstProgressState,
+    firstStopState,
+    secondRunState,
+    secondProgressState,
+    secondStopState,
+    screenshots: [preparedScreenshot, firstRunScreenshot],
+  };
+  gateResults.monitoring = result;
+  return result;
 }
 
 async function runGalleryGate() {
@@ -949,6 +1119,25 @@ function writeEvidenceRecords(summary) {
       "utf8",
     );
   }
+  if (summary.gates.monitoring?.status === "pass") {
+    fs.writeFileSync(
+      path.join(evidenceDir, "profile-monitoring-restart-smoke.md"),
+      evidenceRecord({
+        gateTitle: "Profile Monitoring Restart Smoke",
+        status: "pass",
+        observed:
+          "automated real WebView2/CDP smoke selected only the generated helper app-window source, captured that source as a template, started profile monitoring, observed ticking progress log rows and positive hit counts, stopped monitoring through the main run button, started monitoring again, observed a second running session, and stopped cleanly with the button restored to start",
+        evidenceFiles: [
+          resultPath,
+          appLogPath,
+          ...summary.gates.monitoring.screenshots,
+        ],
+        remainingRisk:
+          "proves start/stop/restart and progress logging on this Windows interactive desktop with a generated stable window source; it does not prove every third-party window capture implementation or every long-running production workload",
+      }),
+      "utf8",
+    );
+  }
 }
 
 async function main() {
@@ -978,6 +1167,9 @@ async function main() {
   if (gateMode === "all" || gateMode === "gallery") {
     await runGalleryGate();
   }
+  if (gateMode === "all" || gateMode === "monitoring") {
+    await runMonitoringGate();
+  }
 
   const summary = {
     runStamp,
@@ -1003,6 +1195,7 @@ async function main() {
     resultPath,
     source: gateResults.source?.status || "skipped",
     gallery: gateResults.gallery?.status || "skipped",
+    monitoring: gateResults.monitoring?.status || "skipped",
   }, null, 2));
 }
 
