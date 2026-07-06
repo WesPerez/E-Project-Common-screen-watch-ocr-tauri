@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 03:10 +08:00
+Last updated: 2026-07-07 03:50 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -10,10 +10,10 @@ future.
 ## Current Deliverable
 
 - Single-file app: `release-single\ScreenWatchOCRTauri.exe`
-- Size: 3,581,952 bytes
-- SHA-256: `3F25ED430D37A04B9F994D460BC1C1D6CC61305E7604F19A70E4608AB092B08B`
+- Size: 3,582,464 bytes
+- SHA-256: `2934248886303006F834A5BA3310261CFD5D9EA37FFB64E14063FDEB4397D66F`
 - Build flavor: lite, OCR models external
-- Last code commit: `79c4efc Fix monitoring heartbeat and tray smoke coverage`
+- Last functional code commit: `cc7034d Fix monitoring restart and compact resizable UI`
 
 ## Identity And Data Boundary
 
@@ -41,15 +41,16 @@ Everything else is separated so old and new processes do not collide:
 | Evidence | Current result |
 | --- | --- |
 | Python baseline unittest | 98 tests passed |
-| Main migration verifier | Python 98, Rust core 117, Tauri 84, OCR feature 23, frontend 93, frontend build passed |
+| Main migration verifier | Rust core 117, Tauri 84, OCR feature 23, frontend 94, frontend build and static contracts passed; Python/release skipped in the latest comprehensive verifier |
 | Desktop smoke | 16 real Windows desktop gates passed |
 | Packaged smoke | start-minimized, legacy migration, geometry restore, close-to-tray, second-instance wake passed |
 | Tray menu smoke | Tauri-owned native menu `Show Tauri` and `Exit Tauri` passed, exit code 0 |
-| WebView visual smoke | source preview and gallery workflow passed; thumbnails measured 90x64 |
+| WebView visual smoke | source preview, gallery workflow, and profile-monitoring restart passed; thumbnails measured 75x48; monitoring restart recorded first run 10 ticks/10 hits and second run 5 ticks/5 hits |
+| Portable package verification | lite portable 1,612,062 bytes and full portable 3,749,839 bytes content-verified after `cc7034d` |
 | Template benchmark | 2560x1440, 8 templates: flat 65ms 8/8, textured 432ms 8/8 |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 8579ms recorded |
 | Real OCR smoke | external PP-OCRv5 English models initialized; READY PNG recognized |
-| Manual evidence status | 8 pass, 0 blocked, 0 fail, 0 missing |
+| Manual evidence status | 9 pass, 0 blocked, 0 fail, 0 missing |
 
 ## Feature Matrix
 
@@ -71,13 +72,13 @@ Everything else is separated so old and new processes do not collide:
 | Screen capture and one-shot scan evidence | Proven | desktop screen capture and one-shot scan gates | None known |
 | Window capture with black PrintWindow fallback | Proven | capture tests and desktop window gates | Some GPU/minimized windows may still be uninspectable |
 | Source preview with DWM handoff and bitmap fallback | Proven | source-preview tests, real DWM gate, WebView visual smoke | Every third-party window class is not exhaustively covered |
-| Persistent monitoring start/stop/status | Proven | monitor session tests, desktop monitoring gates | Long-duration soak beyond smoke length not yet recorded |
-| Stop then start monitoring again | Proven for state logic | frontend monitoring state tests and desktop gates after fix | Long manual UI soak still useful before production use |
-| Tick/event logs while monitoring | Proven for frontend state | frontend tests and `monitor-session` contract | Log cadence depends on capture speed and configured interval |
+| Persistent monitoring start/stop/status | Proven | monitor session tests, desktop monitoring gates, packaged WebView monitoring restart smoke | Long-duration soak beyond smoke length not yet recorded |
+| Stop then start monitoring again | Proven | frontend monitoring state tests, desktop gates, packaged WebView monitoring restart smoke with button restored to `开始监控` after both stops | Long manual UI soak still useful before production use |
+| Tick/event logs while monitoring | Proven | frontend tests, `monitor-session` contract, packaged WebView smoke progress rows (`第 N 轮...累计命中...`) | Log cadence depends on capture speed and configured interval |
 | Alert screenshots, JSONL, cooldown, pruning | Proven | evidence/scan tests and one-shot desktop gates | Full UI evidence browsing is not a separate gate |
 | Beep behavior and throttling | Proven | audio tests and Tauri beep state tests | Actual speaker output is not recorded in smoke |
-| Resizable layout splitters | Proven by tests | frontend layout tests for three-pane and stacked layouts | Manual drag feel is visually checked only indirectly |
-| Smaller image thumbnails | Proven | WebView visual smoke measured target thumbs 90x64 | None known |
+| Resizable layout splitters | Proven by tests | frontend layout tests for three-pane and stacked layouts; main/left splitters remain draggable and control groups are vertically resizable | Manual drag feel is visually checked only indirectly |
+| Smaller image thumbnails | Proven | WebView visual smoke measured target thumbs 75x48 | None known |
 | Close hides to tray | Proven | packaged smoke | None known |
 | Tray Show/Exit | Proven | tray-menu smoke using Tauri-owned native menu command IDs | Visual hover tooltip/icon recording not captured, backend icon/tooltip tests cover state |
 | Tray monitoring icon/tooltip state | Proven by backend tests | tray monitoring status contract and icon pixel tests | No visual tray hover screenshot in current evidence |
@@ -85,8 +86,8 @@ Everything else is separated so old and new processes do not collide:
 | Single-instance wake | Proven | packaged smoke | None known |
 | Startup shortcut | Proven by tests | startup path/status tests | Creating/removing real user startup shortcut is not performed during smoke |
 | Lite package size | Proven | verifier lite size gate | Full OCR build remains larger but still far below Python baseline |
-| Installer repeatability | Historical pass | manual evidence records lite/full installer smoke | Not rerun after commit `79c4efc`; current single-file exe smoke is fresh |
-| Portable package lite/full | Historical pass | acceptance records package verifier runs | Not rerun after commit `79c4efc`; package scripts are statically locked |
+| Installer repeatability | Historical pass | manual evidence records lite/full installer smoke | Not rerun after commit `cc7034d`; current single-file exe smoke is fresh |
+| Portable package lite/full | Fresh pass | package verifier produced and content-verified fresh lite/full portable zips after `cc7034d` | None known for package contents; final user deliverable remains the single exe |
 
 ## Current Conclusion
 
