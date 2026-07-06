@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 06:56 +08:00
+Last updated: 2026-07-07 06:59 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -50,7 +50,7 @@ Everything else is separated so old and new processes do not collide:
 | Portable package verification | latest lite portable 1,613,143 bytes remains a historical content-verified package; full portable 3,749,839 bytes remains the latest historical full package verification; final user deliverable is the fresh single exe |
 | Template benchmark | 2560x1440, 8 templates: flat 65ms 8/8, textured 432ms 8/8 |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 8579ms recorded |
-| Real OCR smoke | external PP-OCRv5 English models initialized; READY PNG recognized |
+| Real OCR smoke | Current rerun passed with external PP-OCRv5 English models: probe initialized and READY PNG was recognized through `cargo test --features ocr` |
 | Manual evidence status | 16 pass, 0 blocked, 0 fail, 0 missing |
 
 ## Feature Matrix
@@ -67,7 +67,7 @@ Everything else is separated so old and new processes do not collide:
 | Hit-count badges and clear hit menu | Proven | frontend tests, WebView context-menu smoke | None known |
 | Pixel target detection | Proven | Python baseline, Rust core tests, scan tests | None known |
 | Template target detection, scales, worker limit | Proven | Rust detector tests, parity/benchmark gates | Production-profile smoke records 8.6s for 18 real templates on synthetic 1440p placement; acceptable but worth tracking |
-| OCR target detection | Partially proven | text-row core tests, real PP-OCRv5 English READY smoke | Chinese accuracy, PP-OCRv6/RapidOCR-native compatibility, broad OCR quality are future validation items |
+| OCR target detection | Partially proven | text-row core tests, current real PP-OCRv5 English READY smoke | Chinese accuracy, PP-OCRv6/RapidOCR-native compatibility, broad OCR quality are future validation items |
 | Screen source listing and mss-style monitor indexes | Proven | desktop monitor-listing smoke | Exotic multi-monitor DPI/topology combinations still need spot checks |
 | App-window listing, duplicate ordinals, remembered apps | Proven | window source tests, desktop remembered-window gates | Apps that refuse capture remain an OS/window limitation |
 | Existing Python profile/template/state compatibility | Proven | core profile preservation tests, packaged migration smoke, legacy profile WebView end-to-end smoke, legacy late-start remembered-app WebView smoke | None known for generated present-at-startup or late-start remembered app-window workflows |
