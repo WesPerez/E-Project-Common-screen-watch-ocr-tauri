@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 03:50 +08:00
+Last updated: 2026-07-07 04:03 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -41,16 +41,16 @@ Everything else is separated so old and new processes do not collide:
 | Evidence | Current result |
 | --- | --- |
 | Python baseline unittest | 98 tests passed |
-| Main migration verifier | Rust core 117, Tauri 84, OCR feature 23, frontend 94, frontend build and static contracts passed; Python/release skipped in the latest comprehensive verifier |
+| Main migration verifier | Python inventory 98, Python unittest 98, Rust core 117, Tauri 84, OCR feature 23, frontend 94, frontend build and static contracts passed; release rebuild skipped in the latest comprehensive verifier |
 | Desktop smoke | 16 real Windows desktop gates passed |
 | Packaged smoke | start-minimized, legacy migration, geometry restore, close-to-tray, second-instance wake passed |
 | Tray menu smoke | Tauri-owned native menu `Show Tauri` and `Exit Tauri` passed, exit code 0 |
-| WebView visual smoke | source preview, gallery workflow, and profile-monitoring restart passed; thumbnails measured 75x48; monitoring restart recorded first run 10 ticks/10 hits and second run 5 ticks/5 hits |
+| WebView visual smoke | source preview, gallery workflow, profile-monitoring restart, and layout resize passed; thumbnails measured 75x48; monitoring restart recorded first run 10 ticks/10 hits and second run 5 ticks/5 hits; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, control-group +58px |
 | Portable package verification | lite portable 1,612,062 bytes and full portable 3,749,839 bytes content-verified after `cc7034d` |
 | Template benchmark | 2560x1440, 8 templates: flat 65ms 8/8, textured 432ms 8/8 |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 8579ms recorded |
 | Real OCR smoke | external PP-OCRv5 English models initialized; READY PNG recognized |
-| Manual evidence status | 9 pass, 0 blocked, 0 fail, 0 missing |
+| Manual evidence status | 10 pass, 0 blocked, 0 fail, 0 missing |
 
 ## Feature Matrix
 
@@ -77,7 +77,7 @@ Everything else is separated so old and new processes do not collide:
 | Tick/event logs while monitoring | Proven | frontend tests, `monitor-session` contract, packaged WebView smoke progress rows (`第 N 轮...累计命中...`) | Log cadence depends on capture speed and configured interval |
 | Alert screenshots, JSONL, cooldown, pruning | Proven | evidence/scan tests and one-shot desktop gates | Full UI evidence browsing is not a separate gate |
 | Beep behavior and throttling | Proven | audio tests and Tauri beep state tests | Actual speaker output is not recorded in smoke |
-| Resizable layout splitters | Proven by tests | frontend layout tests for three-pane and stacked layouts; main/left splitters remain draggable and control groups are vertically resizable | Manual drag feel is visually checked only indirectly |
+| Resizable layout splitters | Proven | frontend layout tests for three-pane and stacked layouts; packaged WebView layout smoke drags the target/settings splitter, settings/preview splitter, target-list/log splitter, and a native vertical control-group resize handle with measured deltas and no horizontal overflow | Very narrow/mobile layouts are covered by responsive CSS and static tests, not exhaustive visual smoke |
 | Smaller image thumbnails | Proven | WebView visual smoke measured target thumbs 75x48 | None known |
 | Close hides to tray | Proven | packaged smoke | None known |
 | Tray Show/Exit | Proven | tray-menu smoke using Tauri-owned native menu command IDs | Visual hover tooltip/icon recording not captured, backend icon/tooltip tests cover state |

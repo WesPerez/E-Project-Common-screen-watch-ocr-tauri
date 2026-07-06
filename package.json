@@ -17,6 +17,7 @@
     "manual:evidence": "powershell -ExecutionPolicy Bypass -File scripts/manual-gate-evidence.ps1",
     "webview:visual:smoke": "node scripts/webview-visual-smoke.mjs",
     "webview:monitoring:smoke": "node scripts/webview-visual-smoke.mjs --gate monitoring",
+    "webview:layout:smoke": "node scripts/webview-visual-smoke.mjs --gate layout",
     "package:portable:lite": "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor lite",
     "package:portable:full": "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor full",
     "tauri:dev": "tauri dev",

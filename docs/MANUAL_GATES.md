@@ -80,8 +80,8 @@ Expected evidence:
 - `rustCoreTests`, `tauriTests`, and `ocrFeatureTests` meet current baselines.
 - `liteSizeGate: passed`.
 - `requiredRealGates: 19 workspace gates, 2 OCR gates`.
-- `manualGateEvidenceStatus:` includes the profile monitoring restart gate when
-  validating final evidence.
+- `manualGateEvidenceStatus:` includes the profile monitoring restart and
+  WebView layout resize gates when validating final evidence.
 
 ## Desktop Backend Smoke
 
@@ -216,6 +216,32 @@ Expected evidence:
 - Log or result JSON proving positive tick count and hit count.
 - Evidence that start/stop/restart monitoring restores the button state and does
   not leave an app process running after the smoke exits.
+
+## WebView Layout Resize Smoke
+
+Repeatable automated evidence can be collected against the current packaged
+release exe on an interactive Windows desktop:
+
+```powershell
+npm run webview:layout:smoke
+```
+
+Manual fallback steps:
+
+- Drag the target/settings splitter horizontally.
+- Drag the settings/preview splitter horizontally.
+- Drag the target-list/log splitter vertically.
+- Resize one non-run control group vertically from its native resize handle.
+- Confirm the target toolbar, template grid, settings controls, log table, and
+  preview panel remain visible without horizontal overflow.
+
+Expected evidence:
+
+- Result JSON showing measured width/height deltas for the target/settings
+  splitter, settings/preview splitter, target-list/log splitter, and native
+  control-group resize.
+- Screenshot or video after the resize sequence.
+- No horizontal page overflow and no clipped critical controls after the drags.
 
 ## Packaged Tray Menu And Icon Smoke
 

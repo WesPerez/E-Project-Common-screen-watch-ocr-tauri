@@ -541,6 +541,7 @@ function Assert-PackageScriptContract {
         "manual:evidence" = "powershell -ExecutionPolicy Bypass -File scripts/manual-gate-evidence.ps1"
         "webview:visual:smoke" = "node scripts/webview-visual-smoke.mjs"
         "webview:monitoring:smoke" = "node scripts/webview-visual-smoke.mjs --gate monitoring"
+        "webview:layout:smoke" = "node scripts/webview-visual-smoke.mjs --gate layout"
         "package:portable:lite" = "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor lite"
         "package:portable:full" = "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor full"
         "tauri:dev" = "tauri dev"
@@ -844,6 +845,7 @@ function Assert-ManualGateRunbookContract {
             "## WebView Source Preview Visual Smoke",
             "## Template Gallery Visual Workflow Smoke",
             "## Profile Monitoring Restart Smoke",
+            "## WebView Layout Resize Smoke",
             "## Packaged Tray Menu And Icon Smoke",
             "## Installer Repeatability Smoke",
             "## Production Template Performance Smoke"
@@ -860,6 +862,7 @@ function Assert-ManualGateRunbookContract {
             'npm run webview:visual:smoke -- --gate source',
             'npm run webview:visual:smoke -- --gate gallery',
             'npm run webview:monitoring:smoke',
+            'npm run webview:layout:smoke',
             'npm run tauri:build:lite',
             'npm run tauri:build:full',
             'npm run tray:smoke -- -ExePath target\release\screen-watch-ocr-tauri.exe',
@@ -881,6 +884,7 @@ function Assert-ManualGateRunbookContract {
             'OCR models are not bundled',
             'DWM-backed window previews',
             'start/stop/restart monitoring',
+            'target/settings splitter',
             'real system tray menu',
             'target\release\bundle',
             'Release exe build-info hash',

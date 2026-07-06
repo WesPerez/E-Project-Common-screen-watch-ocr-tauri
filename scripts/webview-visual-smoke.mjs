@@ -55,6 +55,7 @@ const gateResults = {
   source: null,
   gallery: null,
   monitoring: null,
+  layout: null,
 };
 
 let appProcess = null;
@@ -344,6 +345,89 @@ async function clickSelector(selector) {
   })()`);
 }
 
+async function mouseDrag(from, to, steps = 8) {
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: from.x,
+    y: from.y,
+    button: "none",
+    buttons: 0,
+  });
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: from.x,
+    y: from.y,
+    button: "left",
+    buttons: 1,
+    clickCount: 1,
+  });
+  for (let index = 1; index <= steps; index += 1) {
+    const ratio = index / steps;
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x: from.x + (to.x - from.x) * ratio,
+      y: from.y + (to.y - from.y) * ratio,
+      button: "left",
+      buttons: 1,
+    });
+    await sleep(35);
+  }
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: to.x,
+    y: to.y,
+    button: "left",
+    buttons: 0,
+    clickCount: 1,
+  });
+  await sleep(350);
+}
+
+async function dragSelector(selector, delta) {
+  const rect = await evalJs(`(() => {
+    const item = document.querySelector(${JSON.stringify(selector)});
+    if (!item) return null;
+    const rect = item.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+    };
+  })()`);
+  if (!rect) {
+    throw new Error(`Cannot drag missing selector ${selector}`);
+  }
+  await mouseDrag(
+    { x: rect.centerX, y: rect.centerY },
+    { x: rect.centerX + (delta.dx || 0), y: rect.centerY + (delta.dy || 0) },
+  );
+}
+
+async function dragControlGroupResizeHandle(selector, delta) {
+  const rect = await evalJs(`(() => {
+    const item = document.querySelector(${JSON.stringify(selector)});
+    if (!item) return null;
+    const rect = item.getBoundingClientRect();
+    return {
+      x: rect.right - 4,
+      y: rect.bottom - 4,
+      width: rect.width,
+      height: rect.height,
+    };
+  })()`);
+  if (!rect) {
+    throw new Error(`Cannot resize missing selector ${selector}`);
+  }
+  await mouseDrag(
+    { x: rect.x, y: rect.y },
+    { x: rect.x + (delta.dx || 0), y: rect.y + (delta.dy || 0) },
+    10,
+  );
+}
+
 async function captureScreenshot(name) {
   const file = path.join(evidenceLogDir, `${name}-${runStamp}.png`);
   try {
@@ -563,6 +647,83 @@ async function monitoringState() {
       tickCount: Number(session?.tickCount || session?.tick_count || 0),
       hitCount: Number(session?.hitCount || session?.hit_count || 0),
       running: Boolean(session?.running),
+    };
+  })()`);
+}
+
+async function layoutState() {
+  return evalJs(`(() => {
+    const rectFor = (selector) => {
+      const item = document.querySelector(selector);
+      if (!item) return null;
+      const rect = item.getBoundingClientRect();
+      return {
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        right: Math.round(rect.right),
+        bottom: Math.round(rect.bottom),
+      };
+    };
+    const styleFor = (selector) => {
+      const item = document.querySelector(selector);
+      if (!item) return null;
+      const style = getComputedStyle(item);
+      return {
+        resize: style.resize,
+        overflow: style.overflow,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        height: Math.round(item.getBoundingClientRect().height),
+      };
+    };
+    const targetButtons = [...document.querySelectorAll('.target-toolbar button')].map((button) => ({
+      text: button.textContent,
+      clientWidth: button.clientWidth,
+      scrollWidth: button.scrollWidth,
+      clipped: button.scrollWidth > button.clientWidth + 1,
+    }));
+    const horizontalOverflow = document.documentElement.scrollWidth > window.innerWidth + 1 ||
+      document.body.scrollWidth > window.innerWidth + 1;
+    return {
+      status: document.querySelector('#status')?.textContent || '',
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      appGrid: rectFor('#app-grid'),
+      targetPanel: rectFor('.target-panel'),
+      controlPanel: rectFor('.control-panel'),
+      previewPanel: rectFor('.preview-panel'),
+      targetList: rectFor('#profile-targets'),
+      logPanel: rectFor('.log-panel'),
+      splitters: {
+        targetsControls: rectFor('[data-splitter="targets-controls"]'),
+        controlsPreview: rectFor('[data-splitter="controls-preview"]'),
+        targetsLog: rectFor('[data-splitter="targets-log"]'),
+      },
+      controlGroups: [...document.querySelectorAll('.control-panel .control-group')].map((item) => {
+        const rect = item.getBoundingClientRect();
+        const style = getComputedStyle(item);
+        return {
+          title: item.querySelector('h2')?.textContent || '',
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          resize: style.resize,
+          overflow: style.overflow,
+          overflowX: style.overflowX,
+          overflowY: style.overflowY,
+        };
+      }),
+      firstControlGroup: styleFor('.control-panel .control-group:not(.run-group)'),
+      targetButtons,
+      horizontalOverflow,
+      bodyResizeClass: document.body.classList.contains('is-resizing-layout'),
+      storedLayout: (() => {
+        try {
+          return JSON.parse(localStorage.getItem('screen-watch-ocr-tauri:workbench-layout:v1') || '{}');
+        } catch (_error) {
+          return {};
+        }
+      })(),
     };
   })()`);
 }
@@ -927,6 +1088,96 @@ async function runMonitoringGate() {
   return result;
 }
 
+async function runLayoutGate() {
+  log("running resizable layout visual gate");
+  await waitForReadyStatus();
+  await resizeAppWindow(1120, 820);
+  await sleep(700);
+  const initialState = await layoutState();
+  if (initialState.viewport.width < 961) {
+    throw new Error(`layout gate requires desktop viewport, got ${initialState.viewport.width}`);
+  }
+  if (initialState.horizontalOverflow) {
+    throw new Error("initial layout has horizontal overflow");
+  }
+  const nonResizableControls = initialState.controlGroups.filter(
+    (group) => group.title !== "运行" && group.resize !== "vertical",
+  );
+  if (nonResizableControls.length > 0) {
+    throw new Error(
+      `expected vertical resize controls, got ${JSON.stringify(nonResizableControls)}`,
+    );
+  }
+
+  await dragSelector('[data-splitter="targets-controls"]', { dx: 78, dy: 0 });
+  const afterTargetsControls = await waitFor(async () => {
+    const state = await layoutState();
+    return state.targetPanel.width >= initialState.targetPanel.width + 45 &&
+      state.controlPanel.width <= initialState.controlPanel.width - 35 &&
+      !state.horizontalOverflow
+      ? state
+      : null;
+  }, "targets/settings splitter drag changed column widths", 8000, 250);
+
+  await dragSelector('[data-splitter="controls-preview"]', { dx: 56, dy: 0 });
+  const afterControlsPreview = await waitFor(async () => {
+    const state = await layoutState();
+    return state.controlPanel.width >= afterTargetsControls.controlPanel.width + 25 &&
+      state.previewPanel.width <= afterTargetsControls.previewPanel.width - 20 &&
+      !state.horizontalOverflow
+      ? state
+      : null;
+  }, "settings/preview splitter drag changed column widths", 8000, 250);
+
+  await dragSelector('[data-splitter="targets-log"]', { dx: 0, dy: 54 });
+  const afterTargetsLog = await waitFor(async () => {
+    const state = await layoutState();
+    return state.targetList.height >= afterControlsPreview.targetList.height + 35 &&
+      state.logPanel.height <= afterControlsPreview.logPanel.height - 30 &&
+      !state.horizontalOverflow
+      ? state
+      : null;
+  }, "target list/log splitter drag changed row heights", 8000, 250);
+
+  const firstControlBefore = afterTargetsLog.controlGroups[0];
+  await dragControlGroupResizeHandle(".control-panel .control-group:not(.run-group)", {
+    dx: 0,
+    dy: 58,
+  });
+  const afterControlResize = await waitFor(async () => {
+    const state = await layoutState();
+    const first = state.controlGroups[0];
+    return first.height >= firstControlBefore.height + 30 &&
+      first.resize === "vertical" &&
+      !state.horizontalOverflow
+      ? state
+      : null;
+  }, "control group native vertical resize changed height", 8000, 250);
+
+  const screenshot = await captureScreenshot("webview-layout-resized");
+  const result = {
+    status: "pass",
+    initialState,
+    afterTargetsControls,
+    afterControlsPreview,
+    afterTargetsLog,
+    afterControlResize,
+    measurements: {
+      targetPanelWidthDelta:
+        afterTargetsControls.targetPanel.width - initialState.targetPanel.width,
+      controlPanelWidthDelta:
+        afterControlsPreview.controlPanel.width - afterTargetsControls.controlPanel.width,
+      targetListHeightDelta:
+        afterTargetsLog.targetList.height - afterControlsPreview.targetList.height,
+      firstControlGroupHeightDelta:
+        afterControlResize.controlGroups[0].height - firstControlBefore.height,
+    },
+    screenshots: [screenshot],
+  };
+  gateResults.layout = result;
+  return result;
+}
+
 async function runGalleryGate() {
   log("running template gallery visual gate");
   await waitForReadyStatus();
@@ -1138,6 +1389,25 @@ function writeEvidenceRecords(summary) {
       "utf8",
     );
   }
+  if (summary.gates.layout?.status === "pass") {
+    fs.writeFileSync(
+      path.join(evidenceDir, "webview-layout-resize-smoke.md"),
+      evidenceRecord({
+        gateTitle: "WebView Layout Resize Smoke",
+        status: "pass",
+        observed:
+          "automated real WebView2/CDP smoke dragged the target/settings splitter, settings/preview splitter, target-list/log splitter, and a native vertically resizable control group; each drag produced measured dimension changes without horizontal overflow",
+        evidenceFiles: [
+          resultPath,
+          appLogPath,
+          ...summary.gates.layout.screenshots,
+        ],
+        remainingRisk:
+          "proves the current packaged WebView2 layout resize path on this desktop viewport; it does not exhaustively cover every DPI scale or very narrow mobile layout",
+      }),
+      "utf8",
+    );
+  }
 }
 
 async function main() {
@@ -1170,6 +1440,9 @@ async function main() {
   if (gateMode === "all" || gateMode === "monitoring") {
     await runMonitoringGate();
   }
+  if (gateMode === "all" || gateMode === "layout") {
+    await runLayoutGate();
+  }
 
   const summary = {
     runStamp,
@@ -1196,6 +1469,7 @@ async function main() {
     source: gateResults.source?.status || "skipped",
     gallery: gateResults.gallery?.status || "skipped",
     monitoring: gateResults.monitoring?.status || "skipped",
+    layout: gateResults.layout?.status || "skipped",
   }, null, 2));
 }
 

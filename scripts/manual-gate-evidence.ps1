@@ -59,6 +59,10 @@ function Get-ManualGateDefinitions {
             Title = "Profile Monitoring Restart Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "webview-layout-resize-smoke"
+            Title = "WebView Layout Resize Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "packaged-tray-menu-and-icon-smoke"
             Title = "Packaged Tray Menu And Icon Smoke"
         },
