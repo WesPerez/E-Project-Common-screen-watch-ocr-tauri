@@ -80,9 +80,9 @@ Expected evidence:
 - `rustCoreTests`, `tauriTests`, and `ocrFeatureTests` meet current baselines.
 - `liteSizeGate: passed`.
 - `requiredRealGates: 19 workspace gates, 2 OCR gates`.
-- `manualGateEvidenceStatus:` includes the profile one-shot scan, profile
-  monitoring restart, and WebView layout resize gates when validating final
-  evidence.
+- `manualGateEvidenceStatus:` includes the profile clipboard paste, profile
+  one-shot scan, profile monitoring restart, and WebView layout resize gates
+  when validating final evidence.
 
 ## Desktop Backend Smoke
 
@@ -193,6 +193,34 @@ Expected evidence:
 - Drag/drop and row-button reorder produce the expected order.
 - Only template files under `templates\` are removed by delete/clear actions.
 
+## Profile Clipboard Paste Smoke
+
+Repeatable automated evidence can be collected against the current packaged
+release exe on an interactive Windows desktop:
+
+```powershell
+npm run webview:clipboard:smoke
+```
+
+Manual fallback steps:
+
+- Save or note the current clipboard content before the test.
+- Copy a bitmap image from a screenshot tool or image editor.
+- Click `粘贴图片` and confirm a selected template card appears.
+- Clear the profile targets.
+- Copy one supported image file as a Windows file-list clipboard item.
+- Press `Ctrl+V` while the app is focused and confirm a selected template card
+  appears.
+- Restore the previous clipboard content if it was changed.
+
+Expected evidence:
+
+- Result JSON proving CF_DIB bitmap paste and CF_HDROP image-file paste both
+  created template cards.
+- Screenshot or video after each paste.
+- Thumbnail dimensions remain compact and non-zero.
+- Cleanup notes state whether the previous clipboard object was restored.
+
 ## Profile One Shot Scan Smoke
 
 Repeatable automated evidence can be collected against the current packaged
@@ -259,15 +287,16 @@ Manual fallback steps:
 - Drag the target/settings splitter horizontally.
 - Drag the settings/preview splitter horizontally.
 - Drag the target-list/log splitter vertically.
-- Resize one non-run control group vertically from its native resize handle.
+- Drag one settings-section splitter vertically, such as the monitor-screen /
+  monitor-app divider.
 - Confirm the target toolbar, template grid, settings controls, log table, and
   preview panel remain visible without horizontal overflow.
 
 Expected evidence:
 
 - Result JSON showing measured width/height deltas for the target/settings
-  splitter, settings/preview splitter, target-list/log splitter, and native
-  control-group resize.
+  splitter, settings/preview splitter, target-list/log splitter, and
+  control-panel group splitter.
 - Screenshot or video after the resize sequence.
 - No horizontal page overflow and no clipped critical controls after the drags.
 

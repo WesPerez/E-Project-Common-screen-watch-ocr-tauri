@@ -31,6 +31,7 @@ import {
   profileSourceOptionsHaveSources,
   recordRepeatClick,
   rememberWindowGeometry,
+  resizeMultiPaneLayout,
   resizeStackedPaneLayout,
   resizeThreePaneLayout,
   restoreLayoutPlan,
@@ -1277,6 +1278,34 @@ test("resizable stacked layout keeps the image list and log usable", () => {
     first: 120,
     second: 280,
   });
+});
+
+test("resizable multi-pane layout adjusts adjacent control groups only", () => {
+  const layout = resizeMultiPaneLayout(
+    [100, 120, 140, 260, 120],
+    { index: 1, delta: 30 },
+    {
+      count: 5,
+      minimums: [70, 70, 90, 150, 88],
+      total: 740,
+    },
+  );
+
+  assert.deepEqual(layout, [100, 150, 110, 260, 120]);
+});
+
+test("resizable multi-pane layout clamps when a neighboring group reaches minimum", () => {
+  const layout = resizeMultiPaneLayout(
+    [100, 120, 140, 260, 120],
+    { index: 3, delta: 200 },
+    {
+      count: 5,
+      minimums: [70, 70, 90, 150, 88],
+      total: 740,
+    },
+  );
+
+  assert.deepEqual(layout, [100, 120, 140, 292, 88]);
 });
 
 test("restore layout waits until panes are mapped", () => {

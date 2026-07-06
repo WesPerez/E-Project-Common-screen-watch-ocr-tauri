@@ -844,6 +844,7 @@ function Assert-ManualGateRunbookContract {
             "## Real OCR Model Smoke",
             "## WebView Source Preview Visual Smoke",
             "## Template Gallery Visual Workflow Smoke",
+            "## Profile Clipboard Paste Smoke",
             "## Profile One Shot Scan Smoke",
             "## Profile Monitoring Restart Smoke",
             "## WebView Layout Resize Smoke",
@@ -862,6 +863,7 @@ function Assert-ManualGateRunbookContract {
             'npm run tauri:dev',
             'npm run webview:visual:smoke -- --gate source',
             'npm run webview:visual:smoke -- --gate gallery',
+            'npm run webview:clipboard:smoke',
             'npm run webview:scan:smoke',
             'npm run webview:monitoring:smoke',
             'npm run webview:layout:smoke',
@@ -885,6 +887,7 @@ function Assert-ManualGateRunbookContract {
             'ppocrv5_dict.txt',
             'OCR models are not bundled',
             'DWM-backed window previews',
+            'CF_DIB bitmap paste and CF_HDROP image-file paste',
             'alerts.jsonl plus screenshot evidence',
             'start/stop/restart monitoring',
             'target/settings splitter',
@@ -1192,6 +1195,15 @@ function Assert-FrontendCommandArgumentContract {
             throw "Frontend invoke argument mismatch for '$command' ($($parts -join '; '))"
         }
     }
+
+    Assert-TextContains `
+        "Frontend paste_profile_template_images numeric maxTemplates" `
+        $frontendSource `
+        "maxTemplates: profileImportLimitValue()"
+    Assert-TextContains `
+        "Frontend profile import limit coercion" `
+        $frontendSource `
+        "profileImportRequest([], profileImportLimitInput()).maxTemplates"
 }
 
 function Get-HtmlIds {

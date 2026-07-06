@@ -23,6 +23,7 @@ import {
   profileTargetsEnabledStatusText,
   profileWorkflowActionState,
   recordRepeatClick,
+  resizeMultiPaneLayout,
   resizeStackedPaneLayout,
   resizeThreePaneLayout,
   installWheelScroll,
@@ -51,6 +52,9 @@ const SOURCE_PREVIEW_SYNC_MS = 1000;
 const SOURCE_PREVIEW_BUSY_RETRY_MS = 250;
 const LAYOUT_STORAGE_KEY = "screen-watch-ocr-tauri:workbench-layout:v1";
 const MONITOR_HEARTBEAT_MS = 1000;
+const CONTROL_ROW_KEYS = ["screens", "apps", "region", "match", "run"];
+const CONTROL_ROW_DEFAULTS = [116, 116, 142, 260, 116];
+const CONTROL_ROW_MINIMUMS = [70, 70, 92, 156, 92];
 
 let currentMonitors = [];
 let currentWindows = [];
@@ -78,6 +82,8 @@ let monitorHeartbeatLastWaitingLog = 0;
 let monitorProgressLogLastTick = null;
 let monitorProgressLogLastAt = 0;
 let monitoringOperationPending = "";
+let monitorHeartbeatPolling = false;
+let monitoringUiGeneration = 0;
 
 async function refresh() {
   const status = document.querySelector("#status");
@@ -331,10 +337,18 @@ async function pollMonitoringHeartbeat() {
     stopMonitoringHeartbeat();
     return;
   }
+  if (monitorHeartbeatPolling || monitoringOperationPending === "stop") {
+    return;
+  }
+  const generation = monitoringUiGeneration;
+  monitorHeartbeatPolling = true;
   const status = document.querySelector("#status");
   const result = document.querySelector("#scan-result");
   try {
     const session = await invoke("monitoring_session_status");
+    if (generation !== monitoringUiGeneration) {
+      return;
+    }
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     if (!session.running) {
@@ -358,7 +372,11 @@ async function pollMonitoringHeartbeat() {
       monitorHeartbeatLastWaitingLog = now;
     }
   } catch (error) {
-    status.textContent = String(error);
+    if (generation === monitoringUiGeneration) {
+      status.textContent = String(error);
+    }
+  } finally {
+    monitorHeartbeatPolling = false;
   }
 }
 
@@ -427,6 +445,15 @@ function currentTargetRows() {
   };
 }
 
+function currentControlRows() {
+  const groups = Array.from(
+    document.querySelectorAll(".control-panel > .control-group"),
+  );
+  return CONTROL_ROW_KEYS.map(
+    (_key, index) => groups[index]?.getBoundingClientRect().height || 0,
+  );
+}
+
 function workbenchColumnOptions() {
   const grid = document.querySelector("#app-grid");
   const total = Math.max(1, (grid?.clientWidth || 1) - verticalSplitterWidth());
@@ -449,10 +476,38 @@ function targetRowOptions() {
   };
 }
 
+function controlSplitterHeight() {
+  return Array.from(document.querySelectorAll(".control-splitter")).reduce(
+    (sum, splitter) => sum + splitter.getBoundingClientRect().height,
+    0,
+  );
+}
+
+function controlRowOptions() {
+  const panel = document.querySelector(".control-panel");
+  const current = currentControlRows();
+  const currentTotal = current.reduce((sum, value) => sum + value, 0);
+  const panelTotal = Math.max(
+    1,
+    (panel?.clientHeight || 1) - controlSplitterHeight(),
+  );
+  return {
+    count: CONTROL_ROW_KEYS.length,
+    defaults: CONTROL_ROW_DEFAULTS,
+    minimums: CONTROL_ROW_MINIMUMS,
+    total: Math.max(1, Math.round(currentTotal || panelTotal)),
+  };
+}
+
 function normalizeWorkbenchLayout(layout = {}) {
   return {
     columns: resizeThreePaneLayout(layout.columns || {}, {}, workbenchColumnOptions()),
     rows: resizeStackedPaneLayout(layout.rows || {}, {}, targetRowOptions()),
+    controlRows: resizeMultiPaneLayout(
+      Array.isArray(layout.controlRows) ? layout.controlRows : [],
+      {},
+      controlRowOptions(),
+    ),
   };
 }
 
@@ -470,6 +525,9 @@ function applyWorkbenchLayout(layout = {}) {
   root.style.setProperty("--preview-pane-width", `${next.columns.third}px`);
   root.style.setProperty("--target-list-pane-height", `${next.rows.first}px`);
   root.style.setProperty("--log-pane-height", `${next.rows.second}px`);
+  next.controlRows.forEach((height, index) => {
+    root.style.setProperty(`--control-${CONTROL_ROW_KEYS[index]}-height`, `${height}px`);
+  });
   refreshTargetListScrollbar();
 }
 
@@ -481,6 +539,11 @@ function captureWorkbenchLayout() {
       workbenchColumnOptions(),
     ),
     rows: resizeStackedPaneLayout(currentTargetRows(), {}, targetRowOptions()),
+    controlRows: resizeMultiPaneLayout(
+      currentControlRows(),
+      {},
+      controlRowOptions(),
+    ),
   };
 }
 
@@ -489,7 +552,7 @@ function setWorkbenchResizeState(splitter, dragging) {
   document.body.classList.toggle("is-resizing-layout", dragging);
   document.body.classList.toggle(
     "is-resizing-vertical",
-    dragging && splitter.dataset.splitter === "targets-log",
+    dragging && splitter.classList.contains("horizontal"),
   );
 }
 
@@ -500,24 +563,39 @@ function coverPreviewsForLayoutChange() {
 }
 
 function applySplitterDelta(splitterName, startLayout, delta) {
-  const layout =
-    splitterName === "targets-log"
-      ? {
-          columns: startLayout.columns,
-          rows: resizeStackedPaneLayout(
-            startLayout.rows,
-            { delta, splitter: "first-second" },
-            targetRowOptions(),
-          ),
-        }
-      : {
-          columns: resizeThreePaneLayout(
-            startLayout.columns,
-            { delta, splitter: splitterName },
-            workbenchColumnOptions(),
-          ),
-          rows: startLayout.rows,
-        };
+  let layout = {
+    columns: startLayout.columns,
+    rows: startLayout.rows,
+    controlRows: startLayout.controlRows,
+  };
+  if (splitterName === "targets-log") {
+    layout = {
+      ...layout,
+      rows: resizeStackedPaneLayout(
+        startLayout.rows,
+        { delta, splitter: "first-second" },
+        targetRowOptions(),
+      ),
+    };
+  } else if (splitterName?.startsWith("control-")) {
+    layout = {
+      ...layout,
+      controlRows: resizeMultiPaneLayout(
+        startLayout.controlRows,
+        { delta, index: Number(splitterName.slice("control-".length)) },
+        controlRowOptions(),
+      ),
+    };
+  } else {
+    layout = {
+      ...layout,
+      columns: resizeThreePaneLayout(
+        startLayout.columns,
+        { delta, splitter: splitterName },
+        workbenchColumnOptions(),
+      ),
+    };
+  }
   applyWorkbenchLayout(layout);
   return layout;
 }
@@ -529,7 +607,7 @@ function beginWorkbenchSplitterDrag(event) {
   event.preventDefault();
   const splitter = event.currentTarget;
   const splitterName = splitter.dataset.splitter;
-  const isHorizontal = splitterName === "targets-log";
+  const isHorizontal = splitter.classList.contains("horizontal");
   const startLayout = captureWorkbenchLayout();
   const startX = event.clientX;
   const startY = event.clientY;
@@ -565,7 +643,7 @@ function beginWorkbenchSplitterDrag(event) {
 function nudgeWorkbenchSplitter(event) {
   const splitter = event.currentTarget;
   const splitterName = splitter.dataset.splitter;
-  const isHorizontal = splitterName === "targets-log";
+  const isHorizontal = splitter.classList.contains("horizontal");
   const step = event.shiftKey ? 80 : 24;
   let delta = 0;
 
@@ -1385,6 +1463,7 @@ async function resolveWindows() {
 async function startMonitoring() {
   const status = document.querySelector("#status");
   const result = document.querySelector("#scan-result");
+  monitoringUiGeneration += 1;
   status.textContent = "启动监控...";
   try {
     const session = await invoke("start_monitoring_session", {
@@ -1408,6 +1487,8 @@ async function startMonitoring() {
 async function stopMonitoring() {
   const status = document.querySelector("#status");
   const result = document.querySelector("#scan-result");
+  monitoringUiGeneration += 1;
+  stopMonitoringHeartbeat();
   status.textContent = "停止监控...";
   try {
     const session = await invoke("stop_monitoring_session");
@@ -1959,7 +2040,7 @@ async function pasteProfileImages() {
   try {
     const importResult = await invoke("paste_profile_template_images", {
       profileNumber: selectedProfileNumber(),
-      maxTemplates: profileImportLimitInput(),
+      maxTemplates: profileImportLimitValue(),
     });
     applyProfileEditSelection(importResult);
     await loadProfile();
@@ -1972,6 +2053,10 @@ async function pasteProfileImages() {
 
 function profileImportLimitInput() {
   return document.querySelector("#profile-max-templates").value;
+}
+
+function profileImportLimitValue() {
+  return profileImportRequest([], profileImportLimitInput()).maxTemplates;
 }
 
 async function importProfilePaths(request, clearTextInput) {
@@ -2084,6 +2169,7 @@ async function startProfileMonitoring() {
   }
   const status = document.querySelector("#status");
   const result = document.querySelector("#scan-result");
+  monitoringUiGeneration += 1;
   monitoringOperationPending = "start";
   updateRunControls();
   status.textContent = "启动 profile 监控...";

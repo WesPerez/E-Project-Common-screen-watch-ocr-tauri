@@ -97,13 +97,18 @@ h2 {
 
 .workbench {
   --control-pane-width: 340px;
+  --control-screens-height: 116px;
+  --control-apps-height: 116px;
+  --control-region-height: 142px;
+  --control-match-height: 260px;
+  --control-run-height: 116px;
   --left-pane-width: 1fr;
   --log-pane-height: 170px;
   --preview-pane-width: 0.75fr;
   --splitter-size: 9px;
-  --target-card-height: 86px;
-  --target-card-width: 82px;
-  --target-thumb-height: 48px;
+  --target-card-height: 76px;
+  --target-card-width: 72px;
+  --target-thumb-height: 40px;
   --target-list-pane-height: 1fr;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -194,11 +199,19 @@ h2 {
 }
 
 .control-panel {
-  grid-auto-rows: max-content;
-  align-content: start;
+  grid-template-rows:
+    minmax(70px, var(--control-screens-height))
+    var(--splitter-size)
+    minmax(70px, var(--control-apps-height))
+    var(--splitter-size)
+    minmax(92px, var(--control-region-height))
+    var(--splitter-size)
+    minmax(156px, var(--control-match-height))
+    var(--splitter-size)
+    minmax(92px, var(--control-run-height));
   padding: 8px;
-  gap: 6px;
-  overflow: auto;
+  gap: 0;
+  overflow: hidden;
 }
 
 .preview-panel {
@@ -286,7 +299,7 @@ h2 {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 0;
-  padding: 3px;
+  padding: 2px;
 }
 
 .target-card.is-selected {
@@ -320,8 +333,8 @@ h2 {
 
 .target-enable-check {
   position: absolute;
-  top: 5px;
-  left: 5px;
+  top: 4px;
+  left: 4px;
   z-index: 2;
 }
 
@@ -357,16 +370,16 @@ h2 {
 
 .target-hit-badge {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  min-width: 17px;
-  height: 17px;
-  border-radius: 8px;
+  top: 3px;
+  right: 3px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 7px;
   background: #d92935;
   color: #ffffff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  line-height: 17px;
+  line-height: 16px;
   text-align: center;
 }
 
@@ -381,7 +394,7 @@ h2 {
   display: block;
   overflow: hidden;
   color: #10141c;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -394,25 +407,25 @@ h2 {
 
 .target-actions {
   position: absolute;
-  inset: auto 3px 3px 3px;
+  inset: auto 2px 2px 2px;
   display: none;
   grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
-  padding-top: 4px;
+  gap: 1px;
+  padding-top: 3px;
   background: linear-gradient(transparent, #ffffff 18%);
 }
 
 .target-card:hover .target-actions,
-.target-card.is-selected .target-actions {
+.target-card:focus-within .target-actions {
   display: grid;
 }
 
 .target-actions button {
-  min-height: 20px;
+  min-height: 17px;
   min-width: 0;
-  padding: 1px 2px;
+  padding: 0 1px;
   overflow: hidden;
-  font-size: 10px;
+  font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -519,34 +532,33 @@ body.is-resizing-layout.is-resizing-vertical {
 .control-group {
   display: grid;
   gap: 5px;
-  min-height: 52px;
+  min-height: 0;
   border: 1px solid #d8dde5;
   background: #ffffff;
   overflow: auto;
   padding: 7px;
-  resize: vertical;
+}
+
+.control-group:not(.settings-grid) {
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .control-group h2 {
   font-size: 15px;
 }
 
-.control-group.run-group {
-  resize: none;
-}
-
 .settings-grid {
-  min-height: 132px;
+  min-height: 0;
 }
 
 .settings-grid:nth-of-type(4) {
-  min-height: 220px;
+  min-height: 0;
 }
 
 .source-list {
   display: grid;
   gap: 4px;
-  max-height: 76px;
+  min-height: 0;
   margin: 0;
   padding: 0;
   overflow: auto;
@@ -568,10 +580,6 @@ body.is-resizing-layout.is-resizing-vertical {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.window-list {
-  max-height: 64px;
 }
 
 .settings-grid {
@@ -794,6 +802,13 @@ ul.ocr-models {
   }
 
   .control-panel {
+    display: grid;
+    grid-template-rows: none;
+    gap: 8px;
     overflow: visible;
+  }
+
+  .control-group {
+    min-height: 0;
   }
 }

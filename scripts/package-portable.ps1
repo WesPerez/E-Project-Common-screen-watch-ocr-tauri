@@ -56,7 +56,23 @@ function Get-BuildInfoPath {
 
 function Get-ExeSha256 {
     param([string]$ExePath)
-    return (Get-FileHash -Algorithm SHA256 -LiteralPath $ExePath).Hash.ToLowerInvariant()
+    $getFileHashCommand = Get-Command Get-FileHash -ErrorAction SilentlyContinue
+    if ($getFileHashCommand) {
+        return (Get-FileHash -Algorithm SHA256 -LiteralPath $ExePath).Hash.ToLowerInvariant()
+    }
+
+    $stream = [IO.File]::OpenRead($ExePath)
+    try {
+        $sha256 = [Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = $sha256.ComputeHash($stream)
+            return -join ($bytes | ForEach-Object { $_.ToString("x2") })
+        } finally {
+            $sha256.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
 }
 
 function Write-ReleaseBuildInfo {

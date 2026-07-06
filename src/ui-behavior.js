@@ -797,6 +797,71 @@ export function resizeStackedPaneLayout(layout = {}, drag = {}, options = {}) {
   };
 }
 
+export function resizeMultiPaneLayout(layout = [], drag = {}, options = {}) {
+  const count = Math.max(
+    2,
+    intOr(
+      options.count ??
+        Math.max(
+          Array.isArray(layout) ? layout.length : 0,
+          Array.isArray(options.defaults) ? options.defaults.length : 0,
+          Array.isArray(options.minimums) ? options.minimums.length : 0,
+        ),
+      2,
+    ),
+  );
+  const total = Math.max(1, intOr(options.total, 1));
+  const minimums = scaledMinimums(
+    Array.from({ length: count }, (_item, index) =>
+      intOr(options.minimums?.[index], 52),
+    ),
+    total,
+  );
+  const defaultBase = Math.max(
+    1,
+    total - minimums.reduce((sum, value) => sum + value, 0),
+  );
+  const defaults = Array.from({ length: count }, (_item, index) =>
+    numberOr(options.defaults?.[index], minimums[index] + defaultBase / count),
+  );
+  let values = Array.from({ length: count }, (_item, index) =>
+    numberOr(layout?.[index], defaults[index]),
+  );
+  const sum = values.reduce((acc, value) => acc + value, 0);
+
+  if (Number.isFinite(sum) && sum > 0 && Math.abs(sum - total) > 0.5) {
+    const scale = total / sum;
+    values = values.map((value) => value * scale);
+  }
+
+  const index = Math.trunc(Number(drag.index ?? drag.paneIndex ?? -1));
+  const delta = numberOr(drag.delta, 0);
+  if (index >= 0 && index < count - 1 && delta !== 0) {
+    const first = values[index];
+    const second = values[index + 1];
+    const maxPositive = Math.max(0, second - minimums[index + 1]);
+    const maxNegative = -Math.max(0, first - minimums[index]);
+    const boundedDelta = clamp(delta, maxNegative, maxPositive);
+    values[index] = first + boundedDelta;
+    values[index + 1] = second - boundedDelta;
+  }
+
+  values = values.map((value, index) => Math.max(minimums[index], value));
+  const adjustedSum = values.reduce((acc, value) => acc + value, 0);
+  if (adjustedSum > total) {
+    let overflow = adjustedSum - total;
+    for (let index = values.length - 1; index >= 0 && overflow > 0; index -= 1) {
+      const reduction = Math.min(overflow, values[index] - minimums[index]);
+      values[index] -= reduction;
+      overflow -= reduction;
+    }
+  } else if (adjustedSum < total) {
+    values[values.length - 1] += total - adjustedSum;
+  }
+
+  return values.map((value) => Math.max(1, Math.round(value)));
+}
+
 export function isHiddenWindowState(state) {
   return ["hidden", "iconic", "minimized", "withdrawn"].includes(
     String(state || "").toLowerCase(),

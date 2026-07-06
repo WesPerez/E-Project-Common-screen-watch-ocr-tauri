@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 04:20 +08:00
+Last updated: 2026-07-07 04:56 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -10,10 +10,10 @@ future.
 ## Current Deliverable
 
 - Single-file app: `release-single\ScreenWatchOCRTauri.exe`
-- Size: 3,582,464 bytes
-- SHA-256: `2934248886303006F834A5BA3310261CFD5D9EA37FFB64E14063FDEB4397D66F`
+- Size: 3,582,976 bytes
+- SHA-256: `68B7F9F8B706E0CC1927DE1059B09B44159D9A2D428F6BF9EEFD94135DBFAEC6`
 - Build flavor: lite, OCR models external
-- Last functional code commit: `cc7034d Fix monitoring restart and compact resizable UI`
+- Functional source state: current UI/monitoring fix set
 
 ## Identity And Data Boundary
 
@@ -41,16 +41,16 @@ Everything else is separated so old and new processes do not collide:
 | Evidence | Current result |
 | --- | --- |
 | Python baseline unittest | 98 tests passed |
-| Main migration verifier | Python inventory 98, Python unittest 98, Rust core 117, Tauri 84, OCR feature 23, frontend 94, frontend build and static contracts passed; release rebuild skipped in the latest comprehensive verifier |
+| Main migration verifier | Python inventory 98, Python unittest 98, Rust core 117, Tauri 84, OCR feature 23, frontend 96, frontend build and static contracts passed; release rebuild skipped in the latest comprehensive verifier |
 | Desktop smoke | 16 real Windows desktop gates passed |
 | Packaged smoke | start-minimized, legacy migration, geometry restore, close-to-tray, second-instance wake passed |
 | Tray menu smoke | Tauri-owned native menu `Show Tauri` and `Exit Tauri` passed, exit code 0 |
-| WebView visual smoke | source preview, gallery workflow, profile one-shot scan, profile-monitoring restart, and layout resize passed in one packaged WebView2 run; one-shot scan recorded hitCount 1, 0 skipped selected window sources, alerts.jsonl 1 line, screenshot evidence 1 file, and profile hit_count 1; thumbnails measured 75x48; monitoring restart recorded first run 2 ticks/2 hits with 3 progress rows and second run 4 ticks/4 hits; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, control-group +58px |
-| Portable package verification | lite portable 1,612,062 bytes and full portable 3,749,839 bytes content-verified after `cc7034d` |
+| WebView visual smoke | packaged clipboard paste, profile-monitoring restart, and layout resize passed against SHA-256 `68B7F9F8...`; clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with 67x40 target thumbs; monitoring restart recorded first run 10 ticks/10 hits and second run 5 ticks/5 hits with the button restored to `开始监控`; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, and control-panel group splitter +32px/-32px |
+| Portable package verification | latest lite portable 1,613,143 bytes content-verified after the current UI/monitoring fix; full portable 3,749,839 bytes remains the latest historical full package verification |
 | Template benchmark | 2560x1440, 8 templates: flat 65ms 8/8, textured 432ms 8/8 |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 8579ms recorded |
 | Real OCR smoke | external PP-OCRv5 English models initialized; READY PNG recognized |
-| Manual evidence status | 11 pass, 0 blocked, 0 fail, 0 missing |
+| Manual evidence status | 12 pass, 0 blocked, 0 fail, 0 missing |
 
 ## Feature Matrix
 
@@ -59,7 +59,7 @@ Everything else is separated so old and new processes do not collide:
 | 1-5 profile slots, compatible profile JSON, unknown-field tolerance | Proven | core/profile tests, verifier state/profile contracts | None known for current schema |
 | Shared state geometry and last profile | Proven | window layout tests, packaged geometry smoke | DPI-specific restore is tested with tolerance, not every monitor topology |
 | Template import from files | Proven | backend gallery workflow, WebView visual smoke | Broad user image corpus not exhaustively sampled |
-| Clipboard/path paste templates | Proven by tests | clipboard import tests and frontend paste guards | Real clipboard bitmap path not rerun in packaged smoke |
+| Clipboard/path paste templates | Proven | clipboard import tests, frontend paste guards, packaged WebView clipboard smoke for CF_DIB bitmap paste and CF_HDROP file-list paste | Every clipboard producer and image codec is not exhaustively sampled |
 | Capture selected screen/window as template | Proven | desktop capture gates, WebView gallery capture-source smoke | Third-party hardware-accelerated/minimized windows can still return stale/black frames |
 | Template naming, prune limit, reorder, delete, clear | Proven | profile tests, backend gallery workflow, WebView gallery smoke | None known |
 | Target enable/disable and select-all/invert | Proven | core/frontend tests, WebView gallery smoke | None known |
@@ -77,8 +77,8 @@ Everything else is separated so old and new processes do not collide:
 | Tick/event logs while monitoring | Proven | frontend tests, `monitor-session` contract, packaged WebView smoke progress rows (`第 N 轮...累计命中...`) | Log cadence depends on capture speed and configured interval |
 | Alert screenshots, JSONL, cooldown, pruning | Proven | evidence/scan tests, one-shot desktop gates, and packaged WebView one-shot scan smoke checking `alerts.jsonl` plus screenshot output | Full UI evidence browsing is not a separate gate |
 | Beep behavior and throttling | Proven | audio tests and Tauri beep state tests | Actual speaker output is not recorded in smoke |
-| Resizable layout splitters | Proven | frontend layout tests for three-pane and stacked layouts; packaged WebView layout smoke drags the target/settings splitter, settings/preview splitter, target-list/log splitter, and a native vertical control-group resize handle with measured deltas and no horizontal overflow | Very narrow/mobile layouts are covered by responsive CSS and static tests, not exhaustive visual smoke |
-| Smaller image thumbnails | Proven | WebView visual smoke measured target thumbs 75x48 | None known |
+| Resizable layout splitters | Proven | frontend layout tests for three-pane, stacked, and multi-pane control layouts; packaged WebView layout smoke drags the target/settings splitter, settings/preview splitter, target-list/log splitter, and control-panel group splitter with measured deltas and no horizontal overflow | Very narrow/mobile layouts are covered by responsive CSS and static tests, not exhaustive visual smoke |
+| Smaller image thumbnails | Proven | WebView clipboard smoke measured target thumbs 67x40 and verified selected cards no longer expose overlay action buttons by default | None known |
 | Close hides to tray | Proven | packaged smoke | None known |
 | Tray Show/Exit | Proven | tray-menu smoke using Tauri-owned native menu command IDs | Visual hover tooltip/icon recording not captured, backend icon/tooltip tests cover state |
 | Tray monitoring icon/tooltip state | Proven by backend tests | tray monitoring status contract and icon pixel tests | No visual tray hover screenshot in current evidence |
@@ -86,8 +86,8 @@ Everything else is separated so old and new processes do not collide:
 | Single-instance wake | Proven | packaged smoke | None known |
 | Startup shortcut | Proven by tests | startup path/status tests | Creating/removing real user startup shortcut is not performed during smoke |
 | Lite package size | Proven | verifier lite size gate | Full OCR build remains larger but still far below Python baseline |
-| Installer repeatability | Historical pass | manual evidence records lite/full installer smoke | Not rerun after commit `cc7034d`; current single-file exe smoke is fresh |
-| Portable package lite/full | Fresh pass | package verifier produced and content-verified fresh lite/full portable zips after `cc7034d` | None known for package contents; final user deliverable remains the single exe |
+| Installer repeatability | Historical pass | manual evidence records lite/full installer smoke | Not rerun after the current UI/monitoring fix; current single-file exe smoke is fresh |
+| Portable package lite/full | Fresh lite pass, historical full pass | package verifier produced and content-verified a fresh lite portable zip after the current UI/monitoring fix; full portable zip verification is historical | None known for lite package contents; final user deliverable remains the single exe |
 
 ## Current Conclusion
 

@@ -54,6 +54,7 @@ const screenshots = [];
 const gateResults = {
   source: null,
   gallery: null,
+  clipboard: null,
   scan: null,
   monitoring: null,
   layout: null,
@@ -61,6 +62,7 @@ const gateResults = {
 
 let appProcess = null;
 let helperProcess = null;
+let clipboardSession = null;
 let cdp = null;
 
 function valueArg(name) {
@@ -129,7 +131,7 @@ function readBuildInfo() {
       executableSha256: "missing",
     };
   }
-  const parsed = JSON.parse(fs.readFileSync(buildInfoPath, "utf8"));
+  const parsed = JSON.parse(fs.readFileSync(buildInfoPath, "utf8").replace(/^\uFEFF/, ""));
   return {
     path: buildInfoPath,
     exists: true,
@@ -344,6 +346,48 @@ async function clickSelector(selector) {
     item.click();
     return true;
   })()`);
+}
+
+async function pressCtrlV() {
+  await evalJs(`(() => {
+    document.activeElement?.blur?.();
+    document.body.setAttribute('tabindex', '-1');
+    document.body.focus();
+    return document.activeElement === document.body;
+  })()`);
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Control",
+    code: "ControlLeft",
+    windowsVirtualKeyCode: 17,
+    nativeVirtualKeyCode: 17,
+    modifiers: 2,
+  });
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "v",
+    code: "KeyV",
+    text: "v",
+    windowsVirtualKeyCode: 86,
+    nativeVirtualKeyCode: 86,
+    modifiers: 2,
+  });
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "v",
+    code: "KeyV",
+    windowsVirtualKeyCode: 86,
+    nativeVirtualKeyCode: 86,
+    modifiers: 2,
+  });
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "Control",
+    code: "ControlLeft",
+    windowsVirtualKeyCode: 17,
+    nativeVirtualKeyCode: 17,
+    modifiers: 0,
+  });
 }
 
 async function mouseDrag(from, to, steps = 8) {
@@ -580,6 +624,225 @@ function runPowershell(script, label) {
   });
 }
 
+class ClipboardSession {
+  constructor() {
+    this.buffer = "";
+    this.pending = [];
+    this.ready = false;
+    this.restored = false;
+    this.readyPromise = null;
+    this.resolveReady = null;
+    this.rejectReady = null;
+    this.child = null;
+  }
+
+  start() {
+    if (this.readyPromise) {
+      return this.readyPromise;
+    }
+    const script = `
+$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+function Invoke-ClipboardRetry([scriptblock]$Action) {
+  $last = $null
+  for ($i = 0; $i -lt 15; $i++) {
+    try {
+      return & $Action
+    } catch {
+      $last = $_
+      Start-Sleep -Milliseconds 120
+    }
+  }
+  throw $last
+}
+function Write-SmokeJson($Value) {
+  $Value | ConvertTo-Json -Compress | Write-Output
+}
+function Get-ClipboardFormatNames {
+  $data = Invoke-ClipboardRetry { [System.Windows.Forms.Clipboard]::GetDataObject() }
+  if ($null -eq $data) {
+    return @()
+  }
+  return @($data.GetFormats())
+}
+$oldClipboard = Invoke-ClipboardRetry { [System.Windows.Forms.Clipboard]::GetDataObject() }
+Write-Output "READY"
+while ($true) {
+  $line = [Console]::In.ReadLine()
+  if ($null -eq $line) {
+    break
+  }
+  try {
+    $cmd = $line | ConvertFrom-Json
+    switch ([string]$cmd.action) {
+      "image" {
+        $image = New-Object System.Drawing.Bitmap([string]$cmd.path)
+        $bmpStream = New-Object System.IO.MemoryStream
+        $dibStream = $null
+        try {
+          $image.Save($bmpStream, [System.Drawing.Imaging.ImageFormat]::Bmp)
+          $bmpBytes = $bmpStream.ToArray()
+          $dibBytes = New-Object byte[] ($bmpBytes.Length - 14)
+          [Array]::Copy($bmpBytes, 14, $dibBytes, 0, $dibBytes.Length)
+          $dibStream = New-Object System.IO.MemoryStream(,$dibBytes)
+          $dataObject = New-Object System.Windows.Forms.DataObject
+          $dataObject.SetData([System.Windows.Forms.DataFormats]::Dib, $dibStream)
+          $dataObject.SetData([System.Windows.Forms.DataFormats]::Bitmap, $image)
+          Invoke-ClipboardRetry { [System.Windows.Forms.Clipboard]::SetDataObject($dataObject, $true) } | Out-Null
+        } finally {
+          if ($null -ne $dibStream) { $dibStream.Dispose() }
+          $bmpStream.Dispose()
+          $image.Dispose()
+        }
+        Write-SmokeJson @{
+          ok = $true
+          action = "image"
+          formats = @(Get-ClipboardFormatNames)
+        }
+      }
+      "files" {
+        $list = New-Object System.Collections.Specialized.StringCollection
+        foreach ($path in @($cmd.paths)) {
+          [void]$list.Add([string]$path)
+        }
+        Invoke-ClipboardRetry { [System.Windows.Forms.Clipboard]::SetFileDropList($list) } | Out-Null
+        Write-SmokeJson @{
+          ok = $true
+          action = "files"
+          count = $list.Count
+          formats = @(Get-ClipboardFormatNames)
+        }
+      }
+      "restore" {
+        Invoke-ClipboardRetry {
+          if ($null -ne $oldClipboard) {
+            [System.Windows.Forms.Clipboard]::SetDataObject($oldClipboard, $true)
+          } else {
+            [System.Windows.Forms.Clipboard]::Clear()
+          }
+        } | Out-Null
+        Write-SmokeJson @{ ok = $true; action = "restore" }
+        exit 0
+      }
+      default {
+        throw "unknown clipboard action: $($cmd.action)"
+      }
+    }
+  } catch {
+    Write-SmokeJson @{ ok = $false; error = $_.Exception.Message }
+  }
+}
+`;
+    this.readyPromise = new Promise((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+      this.child = spawn(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-STA",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-EncodedCommand",
+          encodeCommand(script),
+        ],
+        {
+          cwd: windowsProjectRoot,
+          stdio: ["pipe", "pipe", "pipe"],
+          windowsHide: true,
+        },
+      );
+      this.child.stdout.on("data", (chunk) => this.onStdout(chunk));
+      this.child.stderr.on("data", (chunk) => {
+        fs.appendFileSync(appLogPath, `[clipboard stderr] ${chunk}`);
+      });
+      this.child.on("exit", (code) => {
+        fs.appendFileSync(appLogPath, `[clipboard helper] exit=${code}\n`);
+        if (!this.ready) {
+          this.rejectReady?.(new Error(`clipboard helper exited before ready: ${code}`));
+        }
+        while (this.pending.length) {
+          const pending = this.pending.shift();
+          pending.reject(new Error(`clipboard helper exited: ${code}`));
+        }
+      });
+    });
+    return this.readyPromise;
+  }
+
+  onStdout(chunk) {
+    this.buffer += String(chunk);
+    const lines = this.buffer.split(/\r?\n/);
+    this.buffer = lines.pop() || "";
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) {
+        continue;
+      }
+      fs.appendFileSync(appLogPath, `[clipboard stdout] ${line}\n`);
+      if (line === "READY") {
+        this.ready = true;
+        this.resolveReady?.();
+        continue;
+      }
+      const pending = this.pending.shift();
+      if (!pending) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.ok) {
+          pending.resolve(parsed);
+        } else {
+          pending.reject(new Error(parsed.error || "clipboard helper failed"));
+        }
+      } catch (error) {
+        pending.reject(error);
+      }
+    }
+  }
+
+  async request(payload) {
+    await this.start();
+    if (!this.child || !this.child.stdin.writable) {
+      throw new Error("clipboard helper stdin is not writable");
+    }
+    return new Promise((resolve, reject) => {
+      this.pending.push({ resolve, reject });
+      this.child.stdin.write(`${JSON.stringify(payload)}\n`, "utf8");
+    });
+  }
+
+  setImage(file) {
+    return this.request({ action: "image", path: file });
+  }
+
+  setFiles(files) {
+    return this.request({ action: "files", paths: files });
+  }
+
+  async restore() {
+    if (this.restored) {
+      return;
+    }
+    this.restored = true;
+    try {
+      await this.request({ action: "restore" });
+    } finally {
+      this.child?.stdin?.end?.();
+    }
+  }
+}
+
+async function ensureClipboardSession() {
+  if (!clipboardSession) {
+    clipboardSession = new ClipboardSession();
+  }
+  await clipboardSession.start();
+  return clipboardSession;
+}
+
 async function waitForReadyStatus() {
   return waitFor(async () => {
     const status = await evalJs("document.querySelector('#status')?.textContent || ''");
@@ -748,6 +1011,7 @@ async function layoutState() {
         targetsControls: rectFor('[data-splitter="targets-controls"]'),
         controlsPreview: rectFor('[data-splitter="controls-preview"]'),
         targetsLog: rectFor('[data-splitter="targets-log"]'),
+        controlScreenApps: rectFor('[data-splitter="control-0"]'),
       },
       controlGroups: [...document.querySelectorAll('.control-panel .control-group')].map((item) => {
         const rect = item.getBoundingClientRect();
@@ -1234,13 +1498,8 @@ async function runLayoutGate() {
   if (initialState.horizontalOverflow) {
     throw new Error("initial layout has horizontal overflow");
   }
-  const nonResizableControls = initialState.controlGroups.filter(
-    (group) => group.title !== "运行" && group.resize !== "vertical",
-  );
-  if (nonResizableControls.length > 0) {
-    throw new Error(
-      `expected vertical resize controls, got ${JSON.stringify(nonResizableControls)}`,
-    );
+  if (!initialState.splitters.controlScreenApps) {
+    throw new Error("expected control panel splitters to be present");
   }
 
   await dragSelector('[data-splitter="targets-controls"]', { dx: 78, dy: 0 });
@@ -1274,19 +1533,18 @@ async function runLayoutGate() {
   }, "target list/log splitter drag changed row heights", 8000, 250);
 
   const firstControlBefore = afterTargetsLog.controlGroups[0];
-  await dragControlGroupResizeHandle(".control-panel .control-group:not(.run-group)", {
-    dx: 0,
-    dy: 58,
-  });
-  const afterControlResize = await waitFor(async () => {
+  const secondControlBefore = afterTargetsLog.controlGroups[1];
+  await dragSelector('[data-splitter="control-0"]', { dx: 0, dy: 42 });
+  const afterControlSplitter = await waitFor(async () => {
     const state = await layoutState();
     const first = state.controlGroups[0];
-    return first.height >= firstControlBefore.height + 30 &&
-      first.resize === "vertical" &&
+    const second = state.controlGroups[1];
+    return first.height >= firstControlBefore.height + 25 &&
+      second.height <= secondControlBefore.height - 20 &&
       !state.horizontalOverflow
       ? state
       : null;
-  }, "control group native vertical resize changed height", 8000, 250);
+  }, "control panel splitter drag changed group heights", 8000, 250);
 
   const screenshot = await captureScreenshot("webview-layout-resized");
   const result = {
@@ -1295,7 +1553,7 @@ async function runLayoutGate() {
     afterTargetsControls,
     afterControlsPreview,
     afterTargetsLog,
-    afterControlResize,
+    afterControlSplitter,
     measurements: {
       targetPanelWidthDelta:
         afterTargetsControls.targetPanel.width - initialState.targetPanel.width,
@@ -1304,7 +1562,9 @@ async function runLayoutGate() {
       targetListHeightDelta:
         afterTargetsLog.targetList.height - afterControlsPreview.targetList.height,
       firstControlGroupHeightDelta:
-        afterControlResize.controlGroups[0].height - firstControlBefore.height,
+        afterControlSplitter.controlGroups[0].height - firstControlBefore.height,
+      secondControlGroupHeightDelta:
+        afterControlSplitter.controlGroups[1].height - secondControlBefore.height,
     },
     screenshots: [screenshot],
   };
@@ -1438,6 +1698,93 @@ async function runGalleryGate() {
   return result;
 }
 
+async function runClipboardPasteGate() {
+  log("running clipboard paste visual gate");
+  await waitForReadyStatus();
+  const images = createInputImages();
+  const clipboard = await ensureClipboardSession();
+  try {
+    await clearAllProfileTargetsForSmoke();
+    const imageClipboardState = await clipboard.setImage(images[0]);
+    log("set clipboard bitmap image", imageClipboardState);
+    const imageClickResult = await clickSelector("#profile-paste-images");
+    log("clicked paste-images button", { ok: imageClickResult });
+    let imagePasteState = null;
+    try {
+      imagePasteState = await waitFor(async () => {
+        const state = await galleryState();
+        if (
+          state.status.includes("剪贴板") ||
+          state.status.includes("cannot decode") ||
+          state.status.includes("cannot open clipboard")
+        ) {
+          throw new Error(`clipboard bitmap paste failed with UI state: ${JSON.stringify(state)}`);
+        }
+        const card = state.cards[0];
+        return state.cards.length === 1 &&
+          state.status.includes("导入 1 张") &&
+          card?.hasImage &&
+          card?.thumb?.width > 0 &&
+          card?.thumb?.height > 0
+          ? state
+          : null;
+      }, "clipboard bitmap image paste through visible button", 25000, 500);
+    } catch (error) {
+      const lastState = await galleryState();
+      throw new Error(`${error.message}; last gallery state: ${JSON.stringify(lastState)}`);
+    }
+    await scrollProfileTargetsIntoView();
+    const imagePasteScreenshot = await captureScreenshot("profile-clipboard-image-paste");
+
+    await clearAllProfileTargetsForSmoke();
+    const fileClipboardState = await clipboard.setFiles([images[1]]);
+    log("set clipboard file list", fileClipboardState);
+    await pressCtrlV();
+    let fileDropPasteState = null;
+    try {
+      fileDropPasteState = await waitFor(async () => {
+        const state = await galleryState();
+        if (
+          state.status.includes("剪贴板") ||
+          state.status.includes("cannot decode") ||
+          state.status.includes("cannot open clipboard")
+        ) {
+          throw new Error(`clipboard file-list paste failed with UI state: ${JSON.stringify(state)}`);
+        }
+        const card = state.cards[0];
+        return state.cards.length === 1 &&
+          state.status.includes("导入 1 张") &&
+          card?.hasImage &&
+          card?.thumb?.width > 0 &&
+          card?.thumb?.height > 0
+          ? state
+          : null;
+      }, "clipboard file-list paste through Ctrl+V", 25000, 500);
+    } catch (error) {
+      const lastState = await galleryState();
+      throw new Error(`${error.message}; last gallery state: ${JSON.stringify(lastState)}`);
+    }
+    await scrollProfileTargetsIntoView();
+    const fileDropPasteScreenshot = await captureScreenshot("profile-clipboard-file-paste");
+
+    const result = {
+      status: "pass",
+      images,
+      imageClipboardState,
+      imageClickResult,
+      imagePasteState,
+      fileClipboardState,
+      fileDropPasteState,
+      screenshots: [imagePasteScreenshot, fileDropPasteScreenshot],
+    };
+    gateResults.clipboard = result;
+    return result;
+  } finally {
+    await clipboard.restore();
+    clipboardSession = null;
+  }
+}
+
 function relativeList(files) {
   return files.map((file) => path.relative(windowsProjectRoot, file)).join("; ");
 }
@@ -1504,6 +1851,25 @@ function writeEvidenceRecords(summary) {
       "utf8",
     );
   }
+  if (summary.gates.clipboard?.status === "pass") {
+    fs.writeFileSync(
+      path.join(evidenceDir, "profile-clipboard-paste-smoke.md"),
+      evidenceRecord({
+        gateTitle: "Profile Clipboard Paste Smoke",
+        status: "pass",
+        observed:
+          "automated real WebView2/CDP smoke saved the user's clipboard object, pasted a generated bitmap through the visible paste-images button, pasted a generated image file list through Ctrl+V, verified each paste created a selected template card with rendered thumbnail geometry, and restored the saved clipboard object before exit",
+        evidenceFiles: [
+          resultPath,
+          appLogPath,
+          ...summary.gates.clipboard.screenshots,
+        ],
+        remainingRisk:
+          "proves CF_DIB bitmap paste and CF_HDROP image-file paste on this Windows interactive desktop; it does not exhaustively prove every clipboard producer application or every image codec",
+      }),
+      "utf8",
+    );
+  }
   if (summary.gates.scan?.status === "pass") {
     fs.writeFileSync(
       path.join(evidenceDir, "profile-one-shot-scan-smoke.md"),
@@ -1549,7 +1915,7 @@ function writeEvidenceRecords(summary) {
         gateTitle: "WebView Layout Resize Smoke",
         status: "pass",
         observed:
-          "automated real WebView2/CDP smoke dragged the target/settings splitter, settings/preview splitter, target-list/log splitter, and a native vertically resizable control group; each drag produced measured dimension changes without horizontal overflow",
+          "automated real WebView2/CDP smoke dragged the target/settings splitter, settings/preview splitter, target-list/log splitter, and a control-panel group splitter; each drag produced measured dimension changes without horizontal overflow",
         evidenceFiles: [
           resultPath,
           appLogPath,
@@ -1590,6 +1956,9 @@ async function main() {
   if (gateMode === "all" || gateMode === "gallery") {
     await runGalleryGate();
   }
+  if (gateMode === "all" || gateMode === "clipboard") {
+    await runClipboardPasteGate();
+  }
   if (gateMode === "all" || gateMode === "scan") {
     await runOneShotScanGate();
   }
@@ -1624,6 +1993,7 @@ async function main() {
     resultPath,
     source: gateResults.source?.status || "skipped",
     gallery: gateResults.gallery?.status || "skipped",
+    clipboard: gateResults.clipboard?.status || "skipped",
     scan: gateResults.scan?.status || "skipped",
     monitoring: gateResults.monitoring?.status || "skipped",
     layout: gateResults.layout?.status || "skipped",
@@ -1646,6 +2016,16 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    if (clipboardSession) {
+      try {
+        await clipboardSession.restore();
+      } catch (error) {
+        fs.appendFileSync(
+          appLogPath,
+          `[clipboard restore failed] ${error.stack || error.message}\n`,
+        );
+      }
+    }
     try {
       cdp?.close();
     } catch (_error) {

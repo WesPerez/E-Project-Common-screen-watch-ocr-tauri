@@ -55,6 +55,10 @@ function Get-ManualGateDefinitions {
             Title = "Template Gallery Visual Workflow Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "profile-clipboard-paste-smoke"
+            Title = "Profile Clipboard Paste Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "profile-one-shot-scan-smoke"
             Title = "Profile One Shot Scan Smoke"
         },
