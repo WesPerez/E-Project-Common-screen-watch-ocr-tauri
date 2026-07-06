@@ -14,8 +14,10 @@ import {
   installEntryCursorEndHandlers,
   installCustomCheckIndicators,
   layoutBusy,
+  monitoringEventFreshness,
   monitoringEventTransition,
   monitoringProgressLogText,
+  monitoringSessionGeneration,
   monitoringStatusText,
   previewStatusText,
   profileImportRequest,
@@ -84,6 +86,8 @@ let monitorProgressLogLastAt = 0;
 let monitoringOperationPending = "";
 let monitorHeartbeatPolling = false;
 let monitoringUiGeneration = 0;
+let currentMonitoringGeneration = 0;
+let stoppedMonitoringGeneration = 0;
 
 async function refresh() {
   const status = document.querySelector("#status");
@@ -221,7 +225,37 @@ async function attachMonitoringEvents() {
   });
 }
 
+function rememberMonitoringSession(snapshot = {}) {
+  const generation = monitoringSessionGeneration(snapshot);
+  if (!generation) {
+    return generation;
+  }
+  if (snapshot.running) {
+    currentMonitoringGeneration = generation;
+  } else {
+    if (currentMonitoringGeneration === generation) {
+      currentMonitoringGeneration = 0;
+    }
+    stoppedMonitoringGeneration = Math.max(stoppedMonitoringGeneration, generation);
+  }
+  return generation;
+}
+
+function shouldIgnoreMonitoringEvent(payload) {
+  return !monitoringEventFreshness(payload, {
+    currentGeneration: currentMonitoringGeneration,
+    monitoringActive,
+    operationPending: monitoringOperationPending,
+    profileMonitoringActive,
+    stoppedGeneration: stoppedMonitoringGeneration,
+  }).accepted;
+}
+
 function renderMonitoringEvent(payload) {
+  if (shouldIgnoreMonitoringEvent(payload)) {
+    return;
+  }
+  rememberMonitoringSession(payload?.snapshot);
   const status = document.querySelector("#status");
   const result = document.querySelector("#scan-result");
   const transition = monitoringEventTransition(payload, {
@@ -285,7 +319,7 @@ function trackMonitoringHeartbeat(payload) {
 
 function startMonitoringHeartbeat(snapshot = {}) {
   monitorHeartbeatLastTick = monitorTickCount(snapshot);
-  monitorHeartbeatLastWaitingLog = Date.now();
+  monitorHeartbeatLastWaitingLog = 0;
   if (monitorHeartbeatTimer) {
     return;
   }
@@ -293,6 +327,9 @@ function startMonitoringHeartbeat(snapshot = {}) {
     pollMonitoringHeartbeat,
     MONITOR_HEARTBEAT_MS,
   );
+  window.setTimeout(() => {
+    pollMonitoringHeartbeat();
+  }, 0);
 }
 
 function stopMonitoringHeartbeat() {
@@ -349,6 +386,21 @@ async function pollMonitoringHeartbeat() {
     if (generation !== monitoringUiGeneration) {
       return;
     }
+    if (
+      !monitoringEventFreshness(
+        { kind: session.running ? "tick" : "stopped", snapshot: session },
+        {
+          currentGeneration: currentMonitoringGeneration,
+          monitoringActive,
+          operationPending: monitoringOperationPending,
+          profileMonitoringActive,
+          stoppedGeneration: stoppedMonitoringGeneration,
+        },
+      ).accepted
+    ) {
+      return;
+    }
+    rememberMonitoringSession(session);
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     if (!session.running) {
@@ -1470,6 +1522,7 @@ async function startMonitoring() {
       text: document.querySelector("#scan-config").value,
       baseDir: currentDataDir,
     });
+    rememberMonitoringSession(session);
     monitoringActive = Boolean(session.running);
     profileMonitoringActive = false;
     resetMonitoringProgressLog(session);
@@ -1481,6 +1534,12 @@ async function startMonitoring() {
   } catch (error) {
     result.textContent = String(error);
     status.textContent = String(error);
+    monitoringActive = false;
+    profileMonitoringActive = false;
+    currentMonitoringGeneration = 0;
+    stopMonitoringHeartbeat();
+    resetMonitoringProgressLog();
+    updateRunControls();
   }
 }
 
@@ -1492,6 +1551,7 @@ async function stopMonitoring() {
   status.textContent = "停止监控...";
   try {
     const session = await invoke("stop_monitoring_session");
+    rememberMonitoringSession(session);
     monitoringActive = Boolean(session.running);
     profileMonitoringActive = false;
     if (!monitoringActive) {
@@ -1507,6 +1567,13 @@ async function stopMonitoring() {
     status.textContent = String(error);
     monitoringActive = false;
     profileMonitoringActive = false;
+    if (currentMonitoringGeneration > 0) {
+      stoppedMonitoringGeneration = Math.max(
+        stoppedMonitoringGeneration,
+        currentMonitoringGeneration,
+      );
+    }
+    currentMonitoringGeneration = 0;
     stopMonitoringHeartbeat();
     resetMonitoringProgressLog();
     updateRunControls();
@@ -1518,6 +1585,7 @@ async function refreshMonitoringStatus() {
   const result = document.querySelector("#scan-result");
   try {
     const session = await invoke("monitoring_session_status");
+    rememberMonitoringSession(session);
     monitoringActive = Boolean(session.running);
     if (!monitoringActive) {
       profileMonitoringActive = false;
@@ -2179,6 +2247,7 @@ async function startProfileMonitoring() {
       profileNumber: selectedProfileNumber(),
       options: requireProfileOptions("start-monitoring"),
     });
+    rememberMonitoringSession(session);
     monitoringActive = Boolean(session.running);
     profileMonitoringActive = Boolean(session.running);
     resetMonitoringProgressLog(session);
@@ -2190,6 +2259,11 @@ async function startProfileMonitoring() {
   } catch (error) {
     result.textContent = String(error);
     status.textContent = String(error);
+    monitoringActive = false;
+    profileMonitoringActive = false;
+    currentMonitoringGeneration = 0;
+    stopMonitoringHeartbeat();
+    resetMonitoringProgressLog();
   } finally {
     monitoringOperationPending = "";
     updateRunControls();

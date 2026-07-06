@@ -640,6 +640,53 @@ export function monitoringProgressLogText(snapshot = {}, options = {}) {
   return parts.join("，");
 }
 
+export function monitoringSessionGeneration(snapshot = {}) {
+  const value = Number(
+    snapshot?.generation ??
+      snapshot?.sessionGeneration ??
+      snapshot?.session_generation ??
+      0,
+  );
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+}
+
+export function monitoringEventFreshness(payload = {}, state = {}) {
+  const generation = monitoringSessionGeneration(payload?.snapshot || payload);
+  const currentGeneration = monitoringSessionGeneration({
+    generation: state.currentGeneration,
+  });
+  const stoppedGeneration = monitoringSessionGeneration({
+    generation: state.stoppedGeneration,
+  });
+  const kind = String(payload?.kind || "").toLowerCase();
+  const operationPending = String(state.operationPending || "").toLowerCase();
+  if (!generation) {
+    return { accepted: true, generation, stale: false };
+  }
+  if (kind === "started" && operationPending === "stop") {
+    return { accepted: false, generation, stale: true };
+  }
+  if (
+    currentGeneration > 0 &&
+    generation !== currentGeneration &&
+    kind !== "started"
+  ) {
+    return { accepted: false, generation, stale: true };
+  }
+  if (currentGeneration > 0 && generation < currentGeneration) {
+    return { accepted: false, generation, stale: true };
+  }
+  if (
+    currentGeneration === 0 &&
+    stoppedGeneration > 0 &&
+    generation <= stoppedGeneration &&
+    operationPending !== "start"
+  ) {
+    return { accepted: false, generation, stale: true };
+  }
+  return { accepted: true, generation, stale: false };
+}
+
 export function monitoringEventTransition(payload = {}, state = {}) {
   const snapshot = payload?.snapshot || payload || {};
   const kind = String(payload?.kind || "").toLowerCase();

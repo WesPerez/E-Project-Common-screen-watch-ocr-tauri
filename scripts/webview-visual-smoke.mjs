@@ -923,6 +923,7 @@ async function monitoringState() {
       startedRows: rows.filter((text) => text.includes('监控中')).length,
       stoppedRows: rows.filter((text) => text.includes('停止')).length,
       session,
+      generation: Number(session?.generation || session?.sessionGeneration || session?.session_generation || 0),
       tickCount: Number(session?.tickCount || session?.tick_count || 0),
       hitCount: Number(session?.hitCount || session?.hit_count || 0),
       running: Boolean(session?.running),
@@ -1364,6 +1365,7 @@ async function waitForMonitoringStart(description) {
     return state.buttonText === "停止监控" &&
       !state.buttonDisabled &&
       state.running &&
+      state.generation > 0 &&
       state.tickCount > 0 &&
       state.hitCount > 0 &&
       state.progressRows.length > 0
@@ -1465,6 +1467,9 @@ async function runMonitoringGate() {
   await sleep(700);
   await clickSelector("#profile-monitor-start");
   const secondRunState = await waitForMonitoringStart("second monitoring run after stop");
+  if (secondRunState.generation <= firstRunState.generation) {
+    throw new Error(`monitoring restart reused stale generation ${secondRunState.generation} after ${firstRunState.generation}`);
+  }
   await sleep(1200);
   const secondProgressState = await monitoringState();
   const secondStopState = await stopMonitoringFromUi("second monitoring stop");

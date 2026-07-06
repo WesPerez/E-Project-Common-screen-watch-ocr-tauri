@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 05:06 +08:00
+Last updated: 2026-07-07 05:32 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -10,8 +10,8 @@ future.
 ## Current Deliverable
 
 - Single-file app: `release-single\ScreenWatchOCRTauri.exe`
-- Size: 3,582,976 bytes
-- SHA-256: `68B7F9F8B706E0CC1927DE1059B09B44159D9A2D428F6BF9EEFD94135DBFAEC6`
+- Size: 3,583,488 bytes
+- SHA-256: `B67D3EF1329D753451DB661C2C0A06240E1B32459A4724B68CA9466BD2B47BF8`
 - Build flavor: lite, OCR models external
 - Functional source state: current UI/monitoring fix set
 
@@ -41,12 +41,12 @@ Everything else is separated so old and new processes do not collide:
 | Evidence | Current result |
 | --- | --- |
 | Python baseline unittest | 98 tests passed |
-| Main migration verifier | Python inventory 98, Python unittest 98, Rust core 117, Tauri 84, OCR feature 23, frontend 96, frontend build and static contracts passed; release rebuild skipped in the latest comprehensive verifier |
+| Main migration verifier | Python inventory 98, Python unittest 98, Rust core 117, Tauri 84, OCR feature 23, frontend 99, frontend build and static contracts passed; release rebuild skipped in the latest comprehensive verifier |
 | Desktop smoke | 16 real Windows desktop gates passed |
-| Packaged smoke | final SHA-256 `68B7F9F8...` passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port |
-| Tray menu smoke | final SHA-256 `68B7F9F8...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0 |
-| WebView visual smoke | final SHA-256 `68B7F9F8...` passed source preview, gallery workflow, clipboard paste, one-shot scan, monitoring restart, and layout resize in one packaged WebView2 run; clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with 67x40 target thumbs; monitoring restart recorded first run 10 ticks/10 hits and second run 5 ticks/5 hits with the button restored to `开始监控`; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, and control-panel group splitter +32px/-32px |
-| Portable package verification | latest lite portable 1,613,143 bytes content-verified after the current UI/monitoring fix; full portable 3,749,839 bytes remains the latest historical full package verification |
+| Packaged smoke | final SHA-256 `B67D3EF1...` passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port |
+| Tray menu smoke | final SHA-256 `B67D3EF1...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0 |
+| WebView visual smoke | final SHA-256 `B67D3EF1...` passed source preview, gallery workflow, clipboard paste, one-shot scan, monitoring restart, and layout resize in one packaged WebView2 run; clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with 53x31 target thumbs; monitoring restart recorded generation 1 then 2, first run 4 ticks/4 hits and second run 4 ticks/4 hits with the button restored to `开始监控`; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, and control-panel group splitter +32px/-32px |
+| Portable package verification | latest lite portable 1,613,143 bytes remains a historical content-verified package; full portable 3,749,839 bytes remains the latest historical full package verification; final user deliverable is the fresh single exe |
 | Template benchmark | 2560x1440, 8 templates: flat 65ms 8/8, textured 432ms 8/8 |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 8579ms recorded |
 | Real OCR smoke | external PP-OCRv5 English models initialized; READY PNG recognized |
@@ -78,7 +78,7 @@ Everything else is separated so old and new processes do not collide:
 | Alert screenshots, JSONL, cooldown, pruning | Proven | evidence/scan tests, one-shot desktop gates, and packaged WebView one-shot scan smoke checking `alerts.jsonl` plus screenshot output | Full UI evidence browsing is not a separate gate |
 | Beep behavior and throttling | Proven | audio tests and Tauri beep state tests | Actual speaker output is not recorded in smoke |
 | Resizable layout splitters | Proven | frontend layout tests for three-pane, stacked, and multi-pane control layouts; packaged WebView layout smoke drags the target/settings splitter, settings/preview splitter, target-list/log splitter, and control-panel group splitter with measured deltas and no horizontal overflow | Very narrow/mobile layouts are covered by responsive CSS and static tests, not exhaustive visual smoke |
-| Smaller image thumbnails | Proven | WebView clipboard smoke measured target thumbs 67x40 and verified selected cards no longer expose overlay action buttons by default | None known |
+| Smaller image thumbnails | Proven | WebView clipboard smoke measured target thumbs 53x31 and verified toolbar text is not clipped on the smoke viewport | None known |
 | Close hides to tray | Proven | packaged smoke | None known |
 | Tray Show/Exit | Proven | tray-menu smoke using Tauri-owned native menu command IDs | Visual hover tooltip/icon recording not captured, backend icon/tooltip tests cover state |
 | Tray monitoring icon/tooltip state | Proven by backend tests | tray monitoring status contract and icon pixel tests | No visual tray hover screenshot in current evidence |

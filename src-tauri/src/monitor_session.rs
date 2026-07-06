@@ -30,6 +30,7 @@ pub const MONITOR_SESSION_EVENT: &str = "screen-watch://monitor-session";
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MonitorSessionSnapshot {
+    pub generation: u64,
     pub running: bool,
     pub started_at: Option<String>,
     pub stopped_at: Option<String>,
@@ -87,6 +88,7 @@ struct MonitorWorker {
 impl Default for MonitorSessionSnapshot {
     fn default() -> Self {
         Self {
+            generation: 0,
             running: false,
             started_at: None,
             stopped_at: None,
@@ -142,6 +144,7 @@ impl MonitorSessionState {
         let thread_stop = Arc::clone(&stop);
         let started_at = clock_now().time_text;
         let initial = MonitorSessionSnapshot {
+            generation,
             running: true,
             started_at: Some(started_at),
             stopped_at: None,
@@ -887,6 +890,7 @@ mod tests {
 
         let snapshot = value["snapshot"].as_object().unwrap();
         for field in [
+            "generation",
             "running",
             "startedAt",
             "stoppedAt",
@@ -926,6 +930,7 @@ mod tests {
             );
         }
         assert_eq!(snapshot["startedAt"], "start-time");
+        assert_eq!(snapshot["generation"], 0);
         assert_eq!(snapshot["lastTick"], "tick-time");
         assert_eq!(snapshot["tickCount"], 1);
         assert_eq!(snapshot["hitCount"], 4);

@@ -20,8 +20,10 @@ import {
   layoutBusy,
   missingSourceSummary,
   monitorErrorSummary,
+  monitoringEventFreshness,
   monitoringEventTransition,
   monitoringProgressLogText,
+  monitoringSessionGeneration,
   monitoringStatusText,
   previewStatusText,
   profileImportRequest,
@@ -1026,6 +1028,47 @@ test("monitoring progress log text reports heartbeat tick details", () => {
       },
     ),
     "第 8 轮，扫描 2 屏 / 1 应用，本轮命中 3，累计命中 12，capture failed",
+  );
+});
+
+test("monitoring session generation accepts camel and snake case fields", () => {
+  assert.equal(monitoringSessionGeneration({ generation: 7 }), 7);
+  assert.equal(monitoringSessionGeneration({ sessionGeneration: 8 }), 8);
+  assert.equal(monitoringSessionGeneration({ session_generation: 9 }), 9);
+  assert.equal(monitoringSessionGeneration({ generation: "bad" }), 0);
+});
+
+test("monitoring event freshness rejects stale stopped and tick events", () => {
+  assert.deepEqual(
+    monitoringEventFreshness(
+      { kind: "tick", snapshot: { generation: 2, running: true } },
+      { currentGeneration: 3 },
+    ),
+    { accepted: false, generation: 2, stale: true },
+  );
+  assert.deepEqual(
+    monitoringEventFreshness(
+      { kind: "stopped", snapshot: { generation: 3, running: false } },
+      { stoppedGeneration: 3 },
+    ),
+    { accepted: false, generation: 3, stale: true },
+  );
+});
+
+test("monitoring event freshness accepts current events and pending starts", () => {
+  assert.deepEqual(
+    monitoringEventFreshness(
+      { kind: "tick", snapshot: { generation: 4, running: true } },
+      { currentGeneration: 4 },
+    ),
+    { accepted: true, generation: 4, stale: false },
+  );
+  assert.deepEqual(
+    monitoringEventFreshness(
+      { kind: "started", snapshot: { generation: 5, running: true } },
+      { operationPending: "start", stoppedGeneration: 5 },
+    ),
+    { accepted: true, generation: 5, stale: false },
   );
 });
 
