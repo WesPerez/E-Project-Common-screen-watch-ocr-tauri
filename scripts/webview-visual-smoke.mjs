@@ -428,6 +428,19 @@ async function dragControlGroupResizeHandle(selector, delta) {
   );
 }
 
+async function resetStoredWorkbenchLayoutForSmoke() {
+  await evalJs(`(() => {
+    const key = "screen-watch-ocr-tauri:workbench-layout:v1";
+    window.localStorage.removeItem(key);
+    window.dispatchEvent(new Event("resize"));
+    return {
+      storedLayout: window.localStorage.getItem(key),
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    };
+  })()`);
+  await sleep(500);
+}
+
 async function captureScreenshot(name) {
   const file = path.join(evidenceLogDir, `${name}-${runStamp}.png`);
   try {
@@ -1092,6 +1105,7 @@ async function runLayoutGate() {
   log("running resizable layout visual gate");
   await waitForReadyStatus();
   await resizeAppWindow(1120, 820);
+  await resetStoredWorkbenchLayoutForSmoke();
   await sleep(700);
   const initialState = await layoutState();
   if (initialState.viewport.width < 961) {
