@@ -18,6 +18,7 @@
     "webview:visual:smoke": "node scripts/webview-visual-smoke.mjs",
     "webview:clipboard:smoke": "node scripts/webview-visual-smoke.mjs --gate clipboard",
     "webview:scan:smoke": "node scripts/webview-visual-smoke.mjs --gate scan",
+    "webview:legacy-profile:smoke": "node scripts/webview-visual-smoke.mjs --gate legacy-profile",
     "webview:monitoring:smoke": "node scripts/webview-visual-smoke.mjs --gate monitoring",
     "webview:monitoring:soak": "node scripts/webview-visual-smoke.mjs --gate monitoring-soak",
     "webview:layout:smoke": "node scripts/webview-visual-smoke.mjs --gate layout",

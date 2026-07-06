@@ -81,9 +81,9 @@ Expected evidence:
 - `liteSizeGate: passed`.
 - `requiredRealGates: 19 workspace gates, 2 OCR gates`.
 - `manualGateEvidenceStatus:` includes the profile clipboard paste, profile
-  one-shot scan, profile monitoring restart, profile monitoring soak, and
-  WebView layout resize gates plus packaged app and packaged tray gates when
-  validating final evidence.
+  one-shot scan, legacy profile end-to-end, profile monitoring restart, profile
+  monitoring soak, and WebView layout resize gates plus packaged app and
+  packaged tray gates when validating final evidence.
 
 ## Desktop Backend Smoke
 
@@ -273,6 +273,39 @@ Expected evidence:
 - Log or result JSON proving positive tick count and hit count.
 - Evidence that start/stop/restart monitoring restores the button state and does
   not leave an app process running after the smoke exits.
+
+## Legacy Profile End-to-End Smoke
+
+Repeatable automated evidence can be collected against the current packaged
+release exe on an interactive Windows desktop:
+
+```powershell
+npm run webview:legacy-profile:smoke
+```
+
+Manual fallback steps:
+
+- Stage a Python-shaped profile_1.json at `ScreenWatchOCR\profiles\profile_1.json` with one
+  enabled template target, no selected monitors, one remembered application
+  window in `windows`, `region`, and `match` fields.
+- Start the Tauri app without changing any visible settings.
+- Confirm the old profile loads into the UI: one target appears, no monitor is
+  checked, the remembered app window is selected, and match settings such as
+  interval, cooldown, beep, and max screenshots match the JSON.
+- Click `扫描一次` and confirm a positive hit, alert JSONL/screenshot evidence,
+  and profile `hit_count` update.
+- Click `开始监控`, confirm progress rows and positive hit/tick counts, then
+  stop monitoring cleanly.
+
+Expected evidence:
+
+- Result JSON proving the Python-shaped profile was staged before launch and
+  restored without manual reconfiguration.
+- Screenshot or video after profile load, one-shot hit, and monitoring run.
+- alerts.jsonl plus screenshot evidence written under the isolated
+  `ScreenWatchOCR` data directory.
+- Profile JSON showing the matching target `hit_count` increased while unknown
+  top-level/target fields are preserved.
 
 ## Profile Monitoring Soak Smoke
 

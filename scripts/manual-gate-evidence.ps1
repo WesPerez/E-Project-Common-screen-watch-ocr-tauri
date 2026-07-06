@@ -63,6 +63,10 @@ function Get-ManualGateDefinitions {
             Title = "Profile One Shot Scan Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "legacy-profile-e2e-smoke"
+            Title = "Legacy Profile End-to-End Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "profile-monitoring-restart-smoke"
             Title = "Profile Monitoring Restart Smoke"
         },

@@ -64,6 +64,7 @@ const gateResults = {
   gallery: null,
   clipboard: null,
   scan: null,
+  legacyProfile: null,
   monitoring: null,
   monitoringSoak: null,
   layout: null,
@@ -73,6 +74,7 @@ let appProcess = null;
 let helperProcess = null;
 let clipboardSession = null;
 let cdp = null;
+let stageLegacyFixture = null;
 
 function valueArg(name) {
   const index = process.argv.indexOf(name);
@@ -125,6 +127,10 @@ function log(message, extra = null) {
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+function gateEnabled(...names) {
+  return gateMode === "all" || names.includes(gateMode);
 }
 
 function sleep(ms) {
@@ -207,6 +213,73 @@ $form.Controls.Add($label)
   });
   log("started helper window", { pid: child.pid, title: helperTitle });
   return child;
+}
+
+function stageLegacyProfileFixture() {
+  const dataDir = path.join(localAppData, "ScreenWatchOCR");
+  const profilesDir = path.join(dataDir, "profiles");
+  const templatesDir = path.join(dataDir, "templates");
+  ensureDir(profilesDir);
+  ensureDir(templatesDir);
+
+  const templatePath = path.join(templatesDir, "1-1-legacy-window-colour.png");
+  fs.writeFileSync(templatePath, pngBuffer(24, 24, [24, 68, 113]));
+  const profile = {
+    targets: [
+      {
+        name: "1-1-legacy-window-colour",
+        path: templatePath,
+        enabled: true,
+        hit_count: 0,
+        thumb: "legacy-thumb-should-be-ignored.png",
+        legacyTargetNote: "preserve target fields",
+      },
+    ],
+    monitors: [],
+    windows: [
+      {
+        title: helperTitle,
+        ordinal: 1,
+        legacyWindowNote: "saved by Python selected_apps",
+      },
+    ],
+    region: {
+      left: "0",
+      top: "0",
+      width: "",
+      height: "",
+    },
+    match: {
+      threshold: 0.9,
+      scales: "1.0",
+      interval_ms: 450,
+      cooldown: 0,
+      beep: false,
+      beep_seconds: 1,
+      beep_volume: 0,
+      max_templates: 10,
+      max_alerts: 9,
+    },
+    legacyProfileNote: "preserve profile fields",
+  };
+  const state = {
+    last_profile: 1,
+    max_alerts: 9,
+    layout: {
+      geometry: "1120x820+120+80",
+    },
+    legacyStateNote: "preserve state fields",
+  };
+  const profileFile = path.join(profilesDir, "profile_1.json");
+  const stateFile = path.join(dataDir, "state.json");
+  fs.writeFileSync(profileFile, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
+  fs.writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  log("staged legacy Python-shaped profile fixture", {
+    profileFile,
+    stateFile,
+    templatePath,
+  });
+  return { dataDir, profileFile, stateFile, templatePath };
 }
 
 function startApp() {
@@ -1421,6 +1494,149 @@ async function stopMonitoringFromUi(description) {
   }, description, 20000, 300);
 }
 
+async function legacyProfileUiState() {
+  return evalJs(`(() => {
+    const parseJson = (selector) => {
+      const text = document.querySelector(selector)?.textContent || '';
+      try {
+        return text.trim() ? JSON.parse(text) : null;
+      } catch (_error) {
+        return null;
+      }
+    };
+    const monitorChecks = [...document.querySelectorAll('#monitors input[type="checkbox"]:not(:disabled)')];
+    const windowRows = [...document.querySelectorAll('#windows label')].map((label) => ({
+      text: label.textContent || '',
+      checked: Boolean(label.querySelector('input[type="checkbox"]')?.checked),
+    }));
+    return {
+      status: document.querySelector('#status')?.textContent || '',
+      summary: document.querySelector('#profile-summary')?.textContent || '',
+      profileResult: parseJson('#profile-result'),
+      scanResult: parseJson('#scan-result'),
+      cards: [...document.querySelectorAll('.target-card')].map((card) => ({
+        title: card.querySelector('.target-text strong')?.textContent || '',
+        disabled: card.classList.contains('is-disabled'),
+        hasImage: card.querySelector('.target-thumb')?.classList.contains('has-image') || false,
+        hitCount: Number(card.querySelector('.target-hit-badge')?.textContent || 0),
+      })),
+      form: {
+        rememberedWindows: Boolean(document.querySelector('#profile-use-remembered-windows')?.checked),
+        monitorCheckedCount: monitorChecks.filter((item) => item.checked).length,
+        selectedWindows: windowRows.filter((item) => item.checked).map((item) => item.text),
+        windowRows,
+        left: document.querySelector('#profile-region-left')?.value || '',
+        top: document.querySelector('#profile-region-top')?.value || '',
+        width: document.querySelector('#profile-region-width')?.value || '',
+        height: document.querySelector('#profile-region-height')?.value || '',
+        threshold: document.querySelector('#profile-threshold')?.value || '',
+        scales: document.querySelector('#profile-scales')?.value || '',
+        intervalMs: document.querySelector('#profile-interval-ms')?.value || '',
+        cooldown: document.querySelector('#profile-cooldown')?.value || '',
+        beep: Boolean(document.querySelector('#profile-beep')?.checked),
+        beepSeconds: document.querySelector('#profile-beep-seconds')?.value || '',
+        beepVolume: document.querySelector('#profile-beep-volume')?.value || '',
+        maxTemplates: document.querySelector('#profile-max-templates')?.value || '',
+        maxAlerts: document.querySelector('#profile-max-alerts')?.value || '',
+      },
+    };
+  })()`);
+}
+
+function legacyProfileFileState() {
+  const profileFile = profilePath();
+  const profile = JSON.parse(fs.readFileSync(profileFile, "utf8").replace(/^\uFEFF/, ""));
+  return {
+    profileFile,
+    profile,
+    targetCount: Array.isArray(profile.targets) ? profile.targets.length : 0,
+    targetHitCounts: Array.isArray(profile.targets)
+      ? profile.targets.map((target) => Number(target.hit_count ?? target.hitCount ?? 0))
+      : [],
+    legacyProfileNote: profile.legacyProfileNote || "",
+    legacyTargetNote: profile.targets?.[0]?.legacyTargetNote || "",
+    windows: Array.isArray(profile.windows) ? profile.windows : [],
+    match: profile.match || {},
+  };
+}
+
+async function runLegacyProfileGate() {
+  log("running legacy Python profile end-to-end gate");
+  await waitForReadyStatus();
+  await clickSelector("#refresh-windows");
+  await waitForReadyStatus();
+  await clickSelector("#profile-load");
+  const loadedState = await waitFor(async () => {
+    const state = await legacyProfileUiState();
+    const selectedHelper = state.form.selectedWindows.some((text) =>
+      text.includes(helperTitle),
+    );
+    return state.cards.length === 1 &&
+      state.form.rememberedWindows &&
+      state.form.monitorCheckedCount === 0 &&
+      selectedHelper &&
+      state.form.intervalMs === "450" &&
+      state.form.cooldown === "0" &&
+      state.form.beep === false &&
+      state.form.maxTemplates === "10" &&
+      state.form.maxAlerts === "9"
+      ? state
+      : null;
+  }, "legacy Python profile restored into the visible UI", 25000, 500);
+  await scrollProfileTargetsIntoView();
+  const preparedScreenshot = await captureScreenshot("legacy-profile-loaded");
+
+  await clickSelector("#profile-scan-once");
+  const scanHitState = await waitFor(async () => {
+    const state = await scanState();
+    const evidence = alertEvidenceState();
+    const profileFile = legacyProfileFileState();
+    return state.hitCount > 0 &&
+      state.windowResultCount > 0 &&
+      state.skippedWindows === 0 &&
+      state.skippedWindowApps === 0 &&
+      evidence.alertLineCount > 0 &&
+      evidence.screenshotCount > 0 &&
+      evidence.profileHitCounts.some((count) => count > 0) &&
+      profileFile.legacyProfileNote === "preserve profile fields" &&
+      profileFile.legacyTargetNote === "preserve target fields"
+      ? { state, evidence, profileFile }
+      : null;
+  }, "legacy profile one-shot scan hit and evidence", 30000, 500);
+  await scrollProfileTargetsIntoView();
+  const scanScreenshot = await captureScreenshot("legacy-profile-scan-hit");
+
+  await clickSelector("#profile-monitor-start");
+  const monitorStartState = await waitForMonitoringStart(
+    "legacy profile monitoring start with hits",
+  );
+  const monitorProgressState = await waitFor(async () => {
+    const state = await monitoringState();
+    return state.progressRows.length >= 2 &&
+      state.tickCount > monitorStartState.tickCount &&
+      state.hitCount > monitorStartState.hitCount
+      ? state
+      : null;
+  }, "legacy profile monitoring progress rows", 20000, 500);
+  const monitorScreenshot = await captureScreenshot("legacy-profile-monitoring");
+  const monitorStopState = await stopMonitoringFromUi("legacy profile monitoring stop");
+  const finalProfileFile = legacyProfileFileState();
+
+  const result = {
+    status: "pass",
+    fixture: stageLegacyFixture,
+    loadedState,
+    scanHitState,
+    monitorStartState,
+    monitorProgressState,
+    monitorStopState,
+    finalProfileFile,
+    screenshots: [preparedScreenshot, scanScreenshot, monitorScreenshot],
+  };
+  gateResults.legacyProfile = result;
+  return result;
+}
+
 async function runOneShotScanGate() {
   log("running profile one-shot scan gate");
   await waitForReadyStatus();
@@ -1969,7 +2185,7 @@ function evidenceRecord({ gateTitle, status, observed, evidenceFiles, remainingR
     `Completion status: ${status}`,
     `Date/time: ${new Date().toISOString()}`,
     `Machine: ${os.hostname()}`,
-    "Worktree note: screen-watch-ocr-tauri is not a git repository",
+    "Worktree note: Tauri repo present; smoke used isolated LOCALAPPDATA and did not modify the Python baseline",
     `Command(s) and exit code(s): node scripts/webview-visual-smoke.mjs --gate ${gateMode}; exit 0`,
     `Release build-info hash: ${releaseHash}`,
     `Model/image/evidence dirs: inputDir=${inputDir}; localAppData=${localAppData}; evidenceLogDir=${evidenceLogDir}`,
@@ -1983,6 +2199,25 @@ function evidenceRecord({ gateTitle, status, observed, evidenceFiles, remainingR
 
 function writeEvidenceRecords(summary) {
   ensureDir(evidenceDir);
+  if (summary.gates.legacyProfile?.status === "pass") {
+    fs.writeFileSync(
+      path.join(evidenceDir, "legacy-profile-e2e-smoke.md"),
+      evidenceRecord({
+        gateTitle: "Legacy Profile End-to-End Smoke",
+        status: "pass",
+        observed:
+          "automated real WebView2/CDP smoke staged a Python-shaped profile_1.json with an existing template, no selected monitors, remembered app-window source, legacy match settings, and unknown fields; launched the packaged Tauri app without changing configuration; verified the visible UI restored the old profile, clicked scan once, observed a positive window-source hit plus alerts.jsonl/screenshot/profile hit_count evidence, then started and stopped monitoring with continued tick/hit progress",
+        evidenceFiles: [
+          resultPath,
+          appLogPath,
+          ...summary.gates.legacyProfile.screenshots,
+        ],
+        remainingRisk:
+          "proves old Python-shaped profile data works when the remembered app window is present at Tauri startup; a separate late-start remembered-app gate is still needed for apps launched after Tauri has already loaded the profile",
+      }),
+      "utf8",
+    );
+  }
   if (summary.gates.source?.status === "pass") {
     fs.writeFileSync(
       path.join(evidenceDir, "webview-source-preview-visual-smoke.md"),
@@ -2128,6 +2363,9 @@ async function main() {
   fs.writeFileSync(appLogPath, `webview visual smoke ${runStamp}\n`, "utf8");
 
   helperProcess = startHelperWindow();
+  if (gateEnabled("legacy-profile")) {
+    stageLegacyFixture = stageLegacyProfileFixture();
+  }
   appProcess = startApp();
   await sleep(1000);
   const target = await waitForWebviewTarget();
@@ -2139,25 +2377,28 @@ async function main() {
   await resizeAppWindow(1120, 820);
   await waitForReadyStatus();
 
-  if (gateMode === "all" || gateMode === "source") {
+  if (gateEnabled("legacy-profile")) {
+    await runLegacyProfileGate();
+  }
+  if (gateEnabled("source")) {
     await runSourcePreviewGate();
   }
-  if (gateMode === "all" || gateMode === "gallery") {
+  if (gateEnabled("gallery")) {
     await runGalleryGate();
   }
-  if (gateMode === "all" || gateMode === "clipboard") {
+  if (gateEnabled("clipboard")) {
     await runClipboardPasteGate();
   }
-  if (gateMode === "all" || gateMode === "scan") {
+  if (gateEnabled("scan")) {
     await runOneShotScanGate();
   }
-  if (gateMode === "all" || gateMode === "monitoring") {
+  if (gateEnabled("monitoring")) {
     await runMonitoringGate();
   }
   if (gateMode === "monitoring-soak" || gateMode === "soak") {
     await runMonitoringSoakGate();
   }
-  if (gateMode === "all" || gateMode === "layout") {
+  if (gateEnabled("layout")) {
     await runLayoutGate();
   }
 
@@ -2170,6 +2411,7 @@ async function main() {
     helperTitle,
     runRoot,
     localAppData,
+    stageLegacyFixture,
     appLogPath,
     resultPath,
     screenshots,
@@ -2187,6 +2429,7 @@ async function main() {
     gallery: gateResults.gallery?.status || "skipped",
     clipboard: gateResults.clipboard?.status || "skipped",
     scan: gateResults.scan?.status || "skipped",
+    legacyProfile: gateResults.legacyProfile?.status || "skipped",
     monitoring: gateResults.monitoring?.status || "skipped",
     monitoringSoak: gateResults.monitoringSoak?.status || "skipped",
     layout: gateResults.layout?.status || "skipped",

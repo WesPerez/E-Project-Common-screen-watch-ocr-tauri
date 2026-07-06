@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 05:43 +08:00
+Last updated: 2026-07-07 06:18 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -10,8 +10,8 @@ future.
 ## Current Deliverable
 
 - Single-file app: `release-single\ScreenWatchOCRTauri.exe`
-- Size: 3,583,488 bytes
-- SHA-256: `B67D3EF1329D753451DB661C2C0A06240E1B32459A4724B68CA9466BD2B47BF8`
+- Size: 3,584,000 bytes
+- SHA-256: `BD0A7557E58A6FBAF5D558BD0F3C08BDC2E33D14A92C5439DDF4084A460FEBE7`
 - Build flavor: lite, OCR models external
 - Functional source state: current UI/monitoring fix set
 
@@ -41,17 +41,17 @@ Everything else is separated so old and new processes do not collide:
 | Evidence | Current result |
 | --- | --- |
 | Python baseline unittest | 98 tests passed |
-| Main migration verifier | Python inventory 98, Python unittest 98, Rust core 117, Tauri 84, OCR feature 23, frontend 99, frontend build and static contracts passed; release rebuild skipped in the latest comprehensive verifier |
+| Main migration verifier | Python inventory 98, Python unittest 98, Rust core 117, Tauri 85, OCR feature 23, frontend 99, frontend build and static contracts passed; release rebuild skipped in the latest comprehensive verifier |
 | Desktop smoke | 16 real Windows desktop gates passed |
-| Packaged smoke | final SHA-256 `B67D3EF1...` passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port |
-| Tray menu smoke | final SHA-256 `B67D3EF1...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0 |
-| WebView visual smoke | final SHA-256 `B67D3EF1...` passed source preview, gallery workflow, clipboard paste, one-shot scan, monitoring restart, and layout resize in one packaged WebView2 run; clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with 53x31 target thumbs; monitoring restart recorded generation 1 then 2, first run 4 ticks/4 hits and second run 4 ticks/4 hits with the button restored to `开始监控`; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, and control-panel group splitter +32px/-32px |
-| WebView monitoring soak | final SHA-256 `B67D3EF1...` ran profile monitoring for 60,000ms with 31 UI samples, tick delta 112, hit delta 112, progress-log delta 47, and stopped with the button restored to `开始监控` |
+| Packaged smoke | final SHA-256 `BD0A7557...` passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port |
+| Tray menu smoke | final SHA-256 `BD0A7557...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0 |
+| WebView visual smoke | final SHA-256 `BD0A7557...` passed source preview, gallery workflow, clipboard paste, one-shot scan, legacy Python-shaped profile, monitoring restart, and layout resize in packaged WebView2 runs; clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with 43x25 target thumbs inside 48x52 cards; monitoring restart recorded generation 1 then 2, first run 7 ticks/7 hits and second run 2 ticks/2 hits with the button restored to `开始监控`; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, and control-panel group splitter +32px/-32px |
+| WebView monitoring soak | final SHA-256 `BD0A7557...` ran profile monitoring for 60,000ms with 31 UI samples, tick delta 112, hit delta 112, progress-log delta 47, and stopped with the button restored to `开始监控` |
 | Portable package verification | latest lite portable 1,613,143 bytes remains a historical content-verified package; full portable 3,749,839 bytes remains the latest historical full package verification; final user deliverable is the fresh single exe |
 | Template benchmark | 2560x1440, 8 templates: flat 65ms 8/8, textured 432ms 8/8 |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 8579ms recorded |
 | Real OCR smoke | external PP-OCRv5 English models initialized; READY PNG recognized |
-| Manual evidence status | 14 pass, 0 blocked, 0 fail, 0 missing |
+| Manual evidence status | 15 pass, 0 blocked, 0 fail, 0 missing |
 
 ## Feature Matrix
 
@@ -70,6 +70,7 @@ Everything else is separated so old and new processes do not collide:
 | OCR target detection | Partially proven | text-row core tests, real PP-OCRv5 English READY smoke | Chinese accuracy, PP-OCRv6/RapidOCR-native compatibility, broad OCR quality are future validation items |
 | Screen source listing and mss-style monitor indexes | Proven | desktop monitor-listing smoke | Exotic multi-monitor DPI/topology combinations still need spot checks |
 | App-window listing, duplicate ordinals, remembered apps | Proven | window source tests, desktop remembered-window gates | Apps that refuse capture remain an OS/window limitation |
+| Existing Python profile/template/state compatibility | Proven | core profile preservation tests, packaged migration smoke, legacy profile WebView end-to-end smoke | Apps launched after Tauri has already loaded the old profile still need a separate late-start remembered-app gate |
 | Screen capture and one-shot scan evidence | Proven | desktop screen capture and one-shot scan gates; packaged WebView profile one-shot scan smoke drives the visible `扫描一次` button and verifies hit/evidence/profile updates | None known for current generated screen/window sources |
 | Window capture with black PrintWindow fallback | Proven | capture tests and desktop window gates | Some GPU/minimized windows may still be uninspectable |
 | Source preview with DWM handoff and bitmap fallback | Proven | source-preview tests, real DWM gate, WebView visual smoke | Every third-party window class is not exhaustively covered |
