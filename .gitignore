@@ -1,0 +1,14 @@
+/target/
+/node_modules/
+/dist/
+/src-tauri/target/
+/docs/manual-gate-evidence/logs/
+/release-single/
+/.env
+/.env.*
+!/.env.example
+
+*.log
+*.tmp
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screen Watch OCR Tauri</title>
+  </head>
+  <body>
+    <main id="app">
+      <section class="toolbar">
+        <div>
+          <h1>Screen Watch OCR Tauri</h1>
+          <p id="status">Loading...</p>
+        </div>
+        <button id="refresh" type="button">刷新</button>
+      </section>
+
+      <section class="grid">
+        <article>
+          <h2>构建</h2>
+          <dl>
+            <dt>Flavor</dt>
+            <dd id="flavor">-</dd>
+            <dt>OCR</dt>
+            <dd id="ocr">-</dd>
+            <dt>OCR 状态</dt>
+            <dd id="ocr-flags">-</dd>
+          </dl>
+          <div class="inline-controls">
+            <button id="ocr-probe" type="button">测试 OCR 后端</button>
+          </div>
+          <pre id="ocr-probe-result" class="ocr-probe-result">-</pre>
+        </article>
+        <article>
+          <h2>目录</h2>
+          <dl>
+            <dt>数据目录</dt>
+            <dd id="data-dir">-</dd>
+            <dt>模型目录</dt>
+            <dd id="model-dir">-</dd>
+            <dt>模型文件</dt>
+            <dd><ul id="ocr-models" class="ocr-models"></ul></dd>
+          </dl>
+        </article>
+        <article>
+          <h2>启动项</h2>
+          <dl>
+            <dt>支持</dt>
+            <dd id="startup-supported">-</dd>
+            <dt>启用</dt>
+            <dd id="startup-enabled">-</dd>
+            <dt>链接</dt>
+            <dd id="startup-link">-</dd>
+            <dt>目标</dt>
+            <dd id="startup-target">-</dd>
+            <dt>参数</dt>
+            <dd id="startup-args">-</dd>
+          </dl>
+          <button id="startup-refresh" type="button">刷新启动项</button>
+          <button id="startup-enable" type="button">启用</button>
+          <button id="startup-disable" type="button">关闭</button>
+        </article>
+        <article>
+          <h2>屏幕 / 窗口</h2>
+          <ul id="monitors"></ul>
+          <button id="capture-preview" type="button">抓取预览</button>
+          <img id="preview" alt="" />
+          <ul id="windows"></ul>
+          <button id="refresh-windows" type="button">刷新窗口</button>
+          <button id="capture-window-preview" type="button">抓取窗口预览</button>
+          <button id="refresh-source-previews" type="button">刷新来源预览</button>
+          <div id="source-previews" class="source-previews"></div>
+        </article>
+        <article>
+          <h2>Profile</h2>
+          <div class="inline-controls">
+            <label for="profile-number">编号</label>
+            <select id="profile-number">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+            <button id="profile-load" type="button">读取</button>
+            <button id="profile-normalize" type="button">规范化</button>
+            <button id="profile-toggle-all" type="button">全选/反选</button>
+            <button id="profile-clear-all" type="button">清空</button>
+          </div>
+          <p id="profile-summary">-</p>
+          <ul id="profile-targets" class="target-list"></ul>
+          <div class="profile-import">
+            <label for="profile-import-paths">导入图片路径</label>
+            <textarea
+              id="profile-import-paths"
+              spellcheck="false"
+              placeholder="每行一个图片绝对路径"
+            ></textarea>
+            <div class="inline-controls">
+              <label for="profile-max-templates">上限</label>
+              <input id="profile-max-templates" type="number" min="1" value="100" />
+              <button id="profile-select-pngs" type="button">选择图片</button>
+              <button id="profile-paste-images" type="button">粘贴图片</button>
+              <button id="profile-capture-target" type="button">截图作模板</button>
+              <button id="profile-add-paths" type="button">导入</button>
+            </div>
+          </div>
+          <div class="profile-settings">
+            <div class="inline-controls">
+              <label for="profile-region-left">Left</label>
+              <input id="profile-region-left" type="number" value="0" />
+              <label for="profile-region-top">Top</label>
+              <input id="profile-region-top" type="number" value="0" />
+              <label for="profile-region-width">Width</label>
+              <input id="profile-region-width" type="number" min="1" />
+              <label for="profile-region-height">Height</label>
+              <input id="profile-region-height" type="number" min="1" />
+            </div>
+            <div class="inline-controls">
+              <label for="profile-threshold">阈值</label>
+              <input id="profile-threshold" type="number" min="0" max="1" step="0.01" value="0.9" />
+              <label for="profile-scales">缩放</label>
+              <input id="profile-scales" type="text" value="1.0" />
+              <label for="profile-interval-ms">间隔 ms</label>
+              <input id="profile-interval-ms" type="number" min="50" value="250" />
+              <label for="profile-cooldown">冷却</label>
+              <input id="profile-cooldown" type="number" min="0" step="0.1" value="1" />
+            </div>
+            <div class="inline-controls">
+              <label class="check-control" for="profile-beep">
+                <input id="profile-beep" type="checkbox" checked />
+                <span>蜂鸣</span>
+              </label>
+              <label for="profile-beep-seconds">秒</label>
+              <input id="profile-beep-seconds" type="number" min="0.1" step="0.1" value="3" />
+              <label for="profile-beep-volume">音量</label>
+              <input id="profile-beep-volume" type="number" min="0" max="100" value="100" />
+              <label for="profile-max-alerts">截图上限</label>
+              <input id="profile-max-alerts" type="number" min="1" value="50" />
+            </div>
+          </div>
+          <div class="inline-controls">
+            <label class="check-control" for="profile-use-remembered-windows">
+              <input id="profile-use-remembered-windows" type="checkbox" checked />
+              <span>窗口按标题记忆</span>
+            </label>
+            <button id="profile-build-config" type="button">生成扫描配置</button>
+            <button id="profile-scan-once" type="button">Profile 扫描一次</button>
+            <button id="profile-monitor-start" type="button">Profile 开始监控</button>
+            <button id="profile-monitor-stop" type="button">停止监控</button>
+          </div>
+          <pre id="profile-result"></pre>
+        </article>
+        <article>
+          <h2>扫描</h2>
+          <textarea id="scan-config" spellcheck="false"></textarea>
+          <button id="scan-once" type="button">扫描一次</button>
+          <button id="monitor-start" type="button">开始监控</button>
+          <button id="monitor-stop" type="button">停止监控</button>
+          <button id="monitor-status" type="button">状态</button>
+          <button id="resolve-windows" type="button">解析窗口来源</button>
+          <pre id="scan-result"></pre>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,1 @@
+{"main-capability":{"identifier":"main-capability","description":"Default permissions for Screen Watch OCR Tauri.","local":true,"windows":["main"],"permissions":["core:default"]}}

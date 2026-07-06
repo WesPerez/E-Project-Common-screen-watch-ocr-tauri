@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Screen Watch OCR Tauri",
+  "version": "0.1.0",
+  "identifier": "local.screenwatchocrtauri.tauri",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Screen Watch OCR Tauri",
+        "width": 980,
+        "height": 680,
+        "minWidth": 760,
+        "minHeight": 520,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "publisher": "Screen Watch OCR Tauri",
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"]
+  }
+}

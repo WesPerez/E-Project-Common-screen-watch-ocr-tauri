@@ -1,0 +1,30 @@
+[package]
+name = "screen-watch-ocr-tauri"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "screen_watch_ocr_tauri"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = []
+ocr = ["screen-watch-core/ocr"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.2", features = [] }
+
+[dependencies]
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["bmp"] }
+png = "0.17"
+screen-watch-core = { path = "../crates/screen-watch-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.11.5", features = ["tray-icon"] }
+thiserror = "2"
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Media_Audio", "Win32_Storage_Xps", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading", "Win32_UI_Controls_Dialogs", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,33 @@
+{
+  "name": "screen-watch-ocr-tauri",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "test:frontend": "node --test src/*.test.js",
+    "verify:migration": "powershell -ExecutionPolicy Bypass -File scripts/verify-migration.ps1",
+    "ocr:smoke": "powershell -ExecutionPolicy Bypass -File scripts/ocr-smoke.ps1",
+    "template:benchmark": "powershell -ExecutionPolicy Bypass -File scripts/template-benchmark.ps1",
+    "template:parity": "powershell -ExecutionPolicy Bypass -File scripts/template-parity-benchmark.ps1",
+    "production:template:smoke": "powershell -ExecutionPolicy Bypass -File scripts/production-template-performance-smoke.ps1",
+    "packaged:smoke": "powershell -ExecutionPolicy Bypass -File scripts/packaged-smoke.ps1",
+    "tray:smoke": "powershell -ExecutionPolicy Bypass -File scripts/tray-menu-smoke.ps1",
+    "manual:evidence": "powershell -ExecutionPolicy Bypass -File scripts/manual-gate-evidence.ps1",
+    "webview:visual:smoke": "node scripts/webview-visual-smoke.mjs",
+    "package:portable:lite": "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor lite",
+    "package:portable:full": "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor full",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:lite": "node scripts/build-tauri.mjs lite",
+    "tauri:build:full": "node scripts/build-tauri.mjs full"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.0",
+    "vite": "^7.0.0"
+  }
+}
