@@ -848,6 +848,7 @@ function Assert-ManualGateRunbookContract {
             "## Profile One Shot Scan Smoke",
             "## Profile Monitoring Restart Smoke",
             "## WebView Layout Resize Smoke",
+            "## Packaged App Smoke",
             "## Packaged Tray Menu And Icon Smoke",
             "## Installer Repeatability Smoke",
             "## Production Template Performance Smoke"
@@ -891,6 +892,7 @@ function Assert-ManualGateRunbookContract {
             'alerts.jsonl plus screenshot evidence',
             'start/stop/restart monitoring',
             'target/settings splitter',
+            'packagedSmokeVerified: True',
             'real system tray menu',
             'target\release\bundle',
             'Release exe build-info hash',

@@ -82,7 +82,7 @@ Expected evidence:
 - `requiredRealGates: 19 workspace gates, 2 OCR gates`.
 - `manualGateEvidenceStatus:` includes the profile clipboard paste, profile
   one-shot scan, profile monitoring restart, and WebView layout resize gates
-  when validating final evidence.
+  plus packaged app and packaged tray gates when validating final evidence.
 
 ## Desktop Backend Smoke
 
@@ -300,7 +300,7 @@ Expected evidence:
 - Screenshot or video after the resize sequence.
 - No horizontal page overflow and no clipped critical controls after the drags.
 
-## Packaged Tray Menu And Icon Smoke
+## Packaged App Smoke
 
 Build or reuse a lite release exe:
 
@@ -312,6 +312,31 @@ Run packaged baseline smoke:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\packaged-smoke.ps1 -ExePath target\release\screen-watch-ocr-tauri.exe -StartupWaitSeconds 18
+```
+
+Manual fallback steps:
+
+- Launch `target\release\screen-watch-ocr-tauri.exe --start-minimized` with an
+  isolated `LOCALAPPDATA` and isolated `SCREENWATCH_TAURI_SINGLE_INSTANCE_PORT`.
+- Stage a legacy packaged `app_data` directory and confirm profile/template/state
+  files migrate into isolated `ScreenWatchOCR` data.
+- Close the visible main window and confirm the process remains alive with no
+  visible main window.
+- Launch a second instance and confirm it exits after waking the first instance.
+
+Expected evidence:
+
+- `packagedSmokeVerified: True`.
+- Legacy app_data migration, start-minimized, legacy geometry restore,
+  close-to-tray, and second-instance wake all report verified.
+- Cleanup notes prove only smoke-owned processes/temp directories were removed.
+
+## Packaged Tray Menu And Icon Smoke
+
+Build or reuse a lite release exe:
+
+```powershell
+npm run tauri:build:lite
 ```
 
 Run the repeatable tray menu smoke:

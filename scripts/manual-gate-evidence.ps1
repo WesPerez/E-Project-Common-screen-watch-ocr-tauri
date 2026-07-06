@@ -71,6 +71,10 @@ function Get-ManualGateDefinitions {
             Title = "WebView Layout Resize Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "packaged-app-smoke"
+            Title = "Packaged App Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "packaged-tray-menu-and-icon-smoke"
             Title = "Packaged Tray Menu And Icon Smoke"
         },
