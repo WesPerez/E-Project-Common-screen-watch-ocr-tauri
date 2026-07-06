@@ -81,8 +81,9 @@ Expected evidence:
 - `liteSizeGate: passed`.
 - `requiredRealGates: 19 workspace gates, 2 OCR gates`.
 - `manualGateEvidenceStatus:` includes the profile clipboard paste, profile
-  one-shot scan, profile monitoring restart, and WebView layout resize gates
-  plus packaged app and packaged tray gates when validating final evidence.
+  one-shot scan, profile monitoring restart, profile monitoring soak, and
+  WebView layout resize gates plus packaged app and packaged tray gates when
+  validating final evidence.
 
 ## Desktop Backend Smoke
 
@@ -272,6 +273,40 @@ Expected evidence:
 - Log or result JSON proving positive tick count and hit count.
 - Evidence that start/stop/restart monitoring restores the button state and does
   not leave an app process running after the smoke exits.
+
+## Profile Monitoring Soak Smoke
+
+Repeatable automated evidence can be collected against the current packaged
+release exe on an interactive Windows desktop:
+
+```powershell
+npm run webview:monitoring:soak
+```
+
+The default soak duration is 60 seconds. For focused local debugging, pass a
+shorter bounded duration:
+
+```powershell
+npm run webview:monitoring:soak -- --soak-ms 30000
+```
+
+Manual fallback steps:
+
+- Select one stable app-window source and no screen source.
+- Capture that source as a template.
+- Click `开始监控` and leave it running for at least 60 seconds.
+- Confirm the log table keeps adding progress rows and the UI remains
+  responsive during the run.
+- Stop monitoring and confirm the run button returns to `开始监控`.
+
+Expected evidence:
+
+- Result JSON with the soak duration, sampled UI states, positive tick delta,
+  positive hit delta, and progress-log delta.
+- Screenshot or video near the start, midpoint, and end of the run.
+- Evidence that monitoring stops cleanly and no app process remains after the
+  smoke exits.
+- Remaining-risk note must distinguish this from a multi-hour production soak.
 
 ## WebView Layout Resize Smoke
 

@@ -19,6 +19,7 @@
     "webview:clipboard:smoke": "node scripts/webview-visual-smoke.mjs --gate clipboard",
     "webview:scan:smoke": "node scripts/webview-visual-smoke.mjs --gate scan",
     "webview:monitoring:smoke": "node scripts/webview-visual-smoke.mjs --gate monitoring",
+    "webview:monitoring:soak": "node scripts/webview-visual-smoke.mjs --gate monitoring-soak",
     "webview:layout:smoke": "node scripts/webview-visual-smoke.mjs --gate layout",
     "package:portable:lite": "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor lite",
     "package:portable:full": "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor full",

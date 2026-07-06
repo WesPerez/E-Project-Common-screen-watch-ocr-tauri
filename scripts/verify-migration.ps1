@@ -541,6 +541,7 @@ function Assert-PackageScriptContract {
         "manual:evidence" = "powershell -ExecutionPolicy Bypass -File scripts/manual-gate-evidence.ps1"
         "webview:visual:smoke" = "node scripts/webview-visual-smoke.mjs"
         "webview:monitoring:smoke" = "node scripts/webview-visual-smoke.mjs --gate monitoring"
+        "webview:monitoring:soak" = "node scripts/webview-visual-smoke.mjs --gate monitoring-soak"
         "webview:layout:smoke" = "node scripts/webview-visual-smoke.mjs --gate layout"
         "package:portable:lite" = "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor lite"
         "package:portable:full" = "powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Flavor full"
@@ -847,6 +848,7 @@ function Assert-ManualGateRunbookContract {
             "## Profile Clipboard Paste Smoke",
             "## Profile One Shot Scan Smoke",
             "## Profile Monitoring Restart Smoke",
+            "## Profile Monitoring Soak Smoke",
             "## WebView Layout Resize Smoke",
             "## Packaged App Smoke",
             "## Packaged Tray Menu And Icon Smoke",
@@ -867,6 +869,8 @@ function Assert-ManualGateRunbookContract {
             'npm run webview:clipboard:smoke',
             'npm run webview:scan:smoke',
             'npm run webview:monitoring:smoke',
+            'npm run webview:monitoring:soak',
+            'npm run webview:monitoring:soak -- --soak-ms 30000',
             'npm run webview:layout:smoke',
             'npm run tauri:build:lite',
             'npm run tauri:build:full',

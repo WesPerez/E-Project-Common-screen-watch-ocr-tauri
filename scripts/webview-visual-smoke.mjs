@@ -31,6 +31,14 @@ const buildInfoPath = path.join(
 const args = new Set(process.argv.slice(2));
 const shouldWriteRecords = !args.has("--no-record");
 const gateMode = valueArg("--gate") || "all";
+const monitoringSoakMs = clampNumber(
+  numberArg(
+    "--soak-ms",
+    Number(process.env.SCREENWATCH_MONITORING_SOAK_MS || 60000),
+  ),
+  10000,
+  300000,
+);
 const runStamp = timestamp();
 const runRoot = path.join(
   windowsProjectRoot,
@@ -57,6 +65,7 @@ const gateResults = {
   clipboard: null,
   scan: null,
   monitoring: null,
+  monitoringSoak: null,
   layout: null,
 };
 
@@ -71,6 +80,23 @@ function valueArg(name) {
     return "";
   }
   return process.argv[index + 1];
+}
+
+function numberArg(name, fallback) {
+  const raw = valueArg(name);
+  if (raw === "") {
+    return fallback;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function clampNumber(value, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, Math.trunc(number)));
 }
 
 function timestamp() {
@@ -907,12 +933,15 @@ async function galleryState() {
 async function monitoringState() {
   return evalJs(`(() => {
     const resultText = document.querySelector('#scan-result')?.textContent || '';
-    let session = null;
+    let parsed = null;
     try {
-      session = resultText.trim() ? JSON.parse(resultText) : null;
+      parsed = resultText.trim() ? JSON.parse(resultText) : null;
     } catch (_error) {
-      session = null;
+      parsed = null;
     }
+    const session = parsed?.snapshot && typeof parsed.snapshot === 'object'
+      ? parsed.snapshot
+      : parsed;
     const rows = [...document.querySelectorAll('#event-log tr')].map((row) => row.textContent || '');
     return {
       status: document.querySelector('#status')?.textContent || '',
@@ -922,6 +951,7 @@ async function monitoringState() {
       progressRows: rows.filter((text) => text.includes('第 ') && text.includes('扫描')),
       startedRows: rows.filter((text) => text.includes('监控中')).length,
       stoppedRows: rows.filter((text) => text.includes('停止')).length,
+      event: parsed?.snapshot ? parsed : null,
       session,
       generation: Number(session?.generation || session?.sessionGeneration || session?.session_generation || 0),
       tickCount: Number(session?.tickCount || session?.tick_count || 0),
@@ -1490,6 +1520,118 @@ async function runMonitoringGate() {
   return result;
 }
 
+function monitoringSample(elapsedMs, state) {
+  return {
+    elapsedMs,
+    generation: state.generation,
+    hitCount: state.hitCount,
+    progressRows: state.progressRows.length,
+    status: state.status,
+    tickCount: state.tickCount,
+  };
+}
+
+async function runMonitoringSoakGate() {
+  log(`running profile monitoring soak gate for ${monitoringSoakMs}ms`);
+  await waitForReadyStatus();
+  await clickSelector("#refresh-windows");
+  await waitForReadyStatus();
+  const selected = await waitFor(async () => {
+    const result = await selectOnlyHelperWindowSource();
+    return result.ok ? result : null;
+  }, "exclusive helper window source for monitoring soak", 20000, 500);
+  await setMonitoringSmokeInputs();
+  await clearAllProfileTargetsForSmoke();
+  await clickSelector("#profile-capture-target");
+  const capturedTargetState = await waitForCardCount(1);
+  await scrollProfileTargetsIntoView();
+  const preparedScreenshot = await captureScreenshot("profile-monitoring-soak-prepared");
+
+  let monitorStarted = false;
+  let stoppedState = null;
+  try {
+    await clickSelector("#profile-monitor-start");
+    const startState = await waitForMonitoringStart("monitoring soak start with hits");
+    monitorStarted = true;
+    const startedAt = Date.now();
+    const samples = [monitoringSample(0, startState)];
+    let midScreenshot = null;
+    let capturedMidpoint = false;
+    while (Date.now() - startedAt < monitoringSoakMs) {
+      const remaining = monitoringSoakMs - (Date.now() - startedAt);
+      await sleep(Math.max(250, Math.min(2000, remaining)));
+      const state = await monitoringState();
+      const elapsedMs = Date.now() - startedAt;
+      if (
+        state.buttonText !== "停止监控" ||
+        state.buttonDisabled ||
+        !state.running ||
+        state.generation !== startState.generation
+      ) {
+        throw new Error(`monitoring soak became unhealthy at ${elapsedMs}ms: ${JSON.stringify(state)}`);
+      }
+      samples.push(monitoringSample(elapsedMs, state));
+      if (!capturedMidpoint && elapsedMs >= monitoringSoakMs / 2) {
+        midScreenshot = await captureScreenshot("profile-monitoring-soak-mid");
+        capturedMidpoint = true;
+      }
+    }
+
+    const endState = await monitoringState();
+    const tickDelta = endState.tickCount - startState.tickCount;
+    const hitDelta = endState.hitCount - startState.hitCount;
+    const progressDelta = endState.progressRows.length - startState.progressRows.length;
+    const distinctTickCounts = new Set(samples.map((sample) => sample.tickCount)).size;
+    const minTickDelta = Math.max(6, Math.floor(monitoringSoakMs / 3000));
+    const minDistinctTicks = Math.max(4, Math.floor(monitoringSoakMs / 6000));
+    if (tickDelta < minTickDelta) {
+      throw new Error(`monitoring soak tick delta ${tickDelta} below expected ${minTickDelta}`);
+    }
+    if (hitDelta < minTickDelta) {
+      throw new Error(`monitoring soak hit delta ${hitDelta} below expected ${minTickDelta}`);
+    }
+    if (distinctTickCounts < minDistinctTicks) {
+      throw new Error(`monitoring soak distinct tick samples ${distinctTickCounts} below expected ${minDistinctTicks}`);
+    }
+    if (progressDelta < Math.min(8, minTickDelta)) {
+      throw new Error(`monitoring soak progress log delta ${progressDelta} below expected ${Math.min(8, minTickDelta)}`);
+    }
+    const runningScreenshot = await captureScreenshot("profile-monitoring-soak-running");
+    stoppedState = await stopMonitoringFromUi("monitoring soak stop");
+    monitorStarted = false;
+
+    const result = {
+      status: "pass",
+      selected,
+      capturedTargetState,
+      durationMs: monitoringSoakMs,
+      startState,
+      endState,
+      stoppedState,
+      tickDelta,
+      hitDelta,
+      progressDelta,
+      distinctTickCounts,
+      samples,
+      screenshots: [
+        preparedScreenshot,
+        ...(midScreenshot ? [midScreenshot] : []),
+        runningScreenshot,
+      ],
+    };
+    gateResults.monitoringSoak = result;
+    return result;
+  } finally {
+    if (monitorStarted) {
+      try {
+        await stopMonitoringFromUi("monitoring soak cleanup stop");
+      } catch (error) {
+        log(`monitoring soak cleanup stop failed: ${error.message || error}`);
+      }
+    }
+  }
+}
+
 async function runLayoutGate() {
   log("running resizable layout visual gate");
   await waitForReadyStatus();
@@ -1913,6 +2055,25 @@ function writeEvidenceRecords(summary) {
       "utf8",
     );
   }
+  if (summary.gates.monitoringSoak?.status === "pass") {
+    fs.writeFileSync(
+      path.join(evidenceDir, "profile-monitoring-soak-smoke.md"),
+      evidenceRecord({
+        gateTitle: "Profile Monitoring Soak Smoke",
+        status: "pass",
+        observed:
+          `automated real WebView2/CDP smoke selected only the generated helper app-window source, captured that source as a template, ran profile monitoring for ${summary.gates.monitoringSoak.durationMs}ms, sampled ${summary.gates.monitoringSoak.samples.length} UI states, observed tick delta ${summary.gates.monitoringSoak.tickDelta}, hit delta ${summary.gates.monitoringSoak.hitDelta}, progress-log delta ${summary.gates.monitoringSoak.progressDelta}, and stopped cleanly with the button restored to start`,
+        evidenceFiles: [
+          resultPath,
+          appLogPath,
+          ...summary.gates.monitoringSoak.screenshots,
+        ],
+        remainingRisk:
+          "proves a sustained packaged WebView2 monitoring run on this Windows interactive desktop with a generated stable window source; it is still not a multi-hour production soak or an exhaustive third-party window capture matrix",
+      }),
+      "utf8",
+    );
+  }
   if (summary.gates.layout?.status === "pass") {
     fs.writeFileSync(
       path.join(evidenceDir, "webview-layout-resize-smoke.md"),
@@ -1970,6 +2131,9 @@ async function main() {
   if (gateMode === "all" || gateMode === "monitoring") {
     await runMonitoringGate();
   }
+  if (gateMode === "monitoring-soak" || gateMode === "soak") {
+    await runMonitoringSoakGate();
+  }
   if (gateMode === "all" || gateMode === "layout") {
     await runLayoutGate();
   }
@@ -2001,6 +2165,7 @@ async function main() {
     clipboard: gateResults.clipboard?.status || "skipped",
     scan: gateResults.scan?.status || "skipped",
     monitoring: gateResults.monitoring?.status || "skipped",
+    monitoringSoak: gateResults.monitoringSoak?.status || "skipped",
     layout: gateResults.layout?.status || "skipped",
   }, null, 2));
 }
