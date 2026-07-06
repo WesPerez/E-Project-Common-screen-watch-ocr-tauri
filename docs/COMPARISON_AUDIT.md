@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 06:50 +08:00
+Last updated: 2026-07-07 06:56 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -40,8 +40,8 @@ Everything else is separated so old and new processes do not collide:
 
 | Evidence | Current result |
 | --- | --- |
-| Python baseline unittest | 98 tests passed |
-| Main migration verifier | Rust core 117, Tauri 85, OCR feature 23, frontend 101, frontend build and static contracts passed; Python baseline was skipped in the latest focused verifier and remains covered by historical inventory/unittest evidence |
+| Python baseline unittest | Current rerun passed 98 tests with `PYTHONPATH=src; python -m unittest -v`; `python -m screen_watch app --smoke-test` returned `{"ok": true, "monitors": 3}` |
+| Main migration verifier | Rust core 117, Tauri 85, OCR feature 23, frontend 101, frontend build and static contracts passed; Python baseline has fresh standalone evidence above |
 | Desktop smoke | 16 real Windows desktop gates passed |
 | Packaged smoke | final SHA-256 `F50203EE...` passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port using `release-single\ScreenWatchOCRTauri.exe` |
 | Tray menu smoke | final SHA-256 `F50203EE...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0; old Python tray/processes were not touched |
