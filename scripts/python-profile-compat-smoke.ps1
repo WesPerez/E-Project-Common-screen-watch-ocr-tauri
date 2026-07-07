@@ -191,6 +191,19 @@ try:
     assert loaded["selected_apps"] == [{"title": "Tauri Compatibility Window", "ordinal": 2}], loaded
     assert loaded["selected_monitors"] == [], loaded
 
+    external_profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    external_profile["future_profile_after_load"] = {"written_by": "simulated-tauri-concurrent-update"}
+    external_profile["targets"][0]["hit_count"] = 9
+    external_profile["targets"][0]["future_target_after_load"] = True
+    external_profile["match"]["future_match_after_load"] = True
+    profile_path.write_text(json.dumps(external_profile, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    external_state = json.loads(state_path.read_text(encoding="utf-8"))
+    external_state["max_alerts"] = 99
+    external_state["future_state_after_load"] = True
+    external_state["layout"]["future_layout_after_load"] = True
+    state_path.write_text(json.dumps(external_state, ensure_ascii=False, indent=2), encoding="utf-8")
+
     app.save_current_profile()
     app.save_state()
 finally:
@@ -206,6 +219,13 @@ saved = {
     "future_match_preserved_after_python_save": "future_match" in saved_profile.get("match", {}),
     "future_state_preserved_after_python_save": "future_state" in saved_state,
     "future_layout_preserved_after_python_save": "future_layout" in saved_state.get("layout", {}),
+    "external_target_hit_count_preserved_after_python_stale_save": bool(saved_profile.get("targets") and saved_profile["targets"][0].get("hit_count") == 9),
+    "external_target_unknown_preserved_after_python_stale_save": bool(saved_profile.get("targets") and "future_target_after_load" in saved_profile["targets"][0]),
+    "external_profile_unknown_preserved_after_python_stale_save": "future_profile_after_load" in saved_profile,
+    "external_match_unknown_preserved_after_python_stale_save": "future_match_after_load" in saved_profile.get("match", {}),
+    "external_state_max_alerts_preserved_after_python_stale_save": saved_state.get("max_alerts") == 99,
+    "external_state_unknown_preserved_after_python_stale_save": "future_state_after_load" in saved_state,
+    "external_layout_unknown_preserved_after_python_stale_save": "future_layout_after_load" in saved_state.get("layout", {}),
 }
 assert saved["profile_has_required_keys"], saved_profile
 assert saved["state_has_required_keys"], saved_state

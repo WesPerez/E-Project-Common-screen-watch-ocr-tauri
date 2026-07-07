@@ -399,6 +399,10 @@ Expected evidence:
   Current evidence shows old Python drops unknown top-level profile, match,
   state, and layout fields, so Tauri must keep preserving unknown shared fields
   itself when future features add data.
+- The result records the stale-save boundary after a simulated Tauri-style disk
+  update made after Python load. Current evidence shows old Python overwrites
+  post-load target hit count, future fields, and `max_alerts`, so old and new
+  apps should not actively write the same profile at the same time.
 
 ## Profile Monitoring Soak Smoke
 

@@ -1716,6 +1716,11 @@ function Assert-LegacyProfilePersistenceContract {
             'future_match_preserved_after_python_save',
             'future_state_preserved_after_python_save',
             'future_layout_preserved_after_python_save',
+            'external_target_hit_count_preserved_after_python_stale_save',
+            'external_state_max_alerts_preserved_after_python_stale_save',
+            'external_layout_unknown_preserved_after_python_stale_save',
+            'external_profile["targets"][0]["hit_count"] = 9',
+            'external_state["max_alerts"] = 99',
             'assert loaded["selected_apps"] == [{"title": "Tauri Compatibility Window", "ordinal": 2}], loaded',
             'assert saved["profile_has_required_keys"], saved_profile',
             'assert saved["state_has_required_keys"], saved_state'
