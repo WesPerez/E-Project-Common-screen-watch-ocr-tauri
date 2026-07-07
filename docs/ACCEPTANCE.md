@@ -24,6 +24,14 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
 
 ## Current Rust/Tauri Verification
 
+- Current status snapshot as of 2026-07-07 18:14 +08:00:
+  `docs\VERIFICATION_RUN_20260707_1654.md` and
+  `docs\COMPARISON_AUDIT.md` are the current top-level evidence records. The
+  manual evidence gate is `19 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete,
+  0 invalid`; the delivered single-file exe is
+  `release-single\ScreenWatchOCRTauri.exe`, 3,587,584 bytes, SHA-256
+  `200C0C8E8EFB8AF4A2DD56A37C9762C2582C45DB441555E669A114AF5D1737B2`, and the
+  migration verifier locks it as a Windows GUI subsystem executable.
 - `scripts\verify-migration.ps1` is the repeatable migration gate. It runs the
   static Python test inventory check, Python baseline count check, Rust
   formatting, Cargo OCR feature-boundary and dependency-tree checks, Rust
@@ -1184,9 +1192,9 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   context menu clear, delete, clear-all, and screenshot-as-template capture.
   `npm run manual:evidence --
   -Status` then reported `pass=6, blocked=1, fail=0, missing=1, incomplete=0,
-  invalid=0`; only the real OCR model smoke remains blocked by missing external
-  model assets, and only the packaged tray menu/icon click smoke remains
-  missing.
+  invalid=0`; at that historical milestone the real OCR model smoke was still
+  blocked by missing external model assets, and the packaged tray menu/icon
+  click smoke had not yet been recorded.
 - After refreshing the final packaged WebView2/CDP full smoke:
   `node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe`
   passed in `webview-visual-smoke-20260707-161407-result.json` with source
@@ -1643,22 +1651,26 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   real external OCR assets and optional PNG recognition smoke.
 - Report lite/full build flavor.
 
-## Future Manual Gates
+## Remaining Validation Boundaries
 
-- Multi-monitor screen capture and scan integration beyond the single-region
-  one-shot desktop gate.
-- Full production monitoring lifecycle: app lifecycle hooks, background
-  behavior, and UI workflow wiring.
-- Optional packaged tray visual hover recording beyond the automated smoke:
-  real show/exit tray menu clicks are now covered by `scripts\tray-menu-smoke.ps1`;
-  backend tray menu, click routing, generated icon pixels, tooltip text,
-  `--start-minimized`, close-to-tray, and single-instance wake paths have
-  repeatable coverage.
-- Alert image full UI/runtime integration.
-- OpenCV/Python performance comparison against representative production
-  template sets; the fixed synthetic parity script exists and currently records
-  Python/OpenCV ahead of pure Rust on that workload.
-- Broader OCR quality coverage beyond the current 9-case generated English and
-  Chinese PP-OCRv5 corpus: PP-OCRv6/RapidOCR-native profile compatibility,
-  varied real screenshot accuracy, and production OCR workload performance
-  remain future validation items.
+- Multi-monitor and DPI coverage beyond the current Windows desktop smoke
+  matrix still needs spot checks on additional hardware/topologies.
+- Long-running production monitoring beyond the recorded packaged WebView
+  start/stop/restart smoke and 600-second soak is not yet a multi-hour or
+  multi-day endurance record.
+- Third-party protected, minimized, GPU-only, or capture-blocking windows can
+  still fail due to Windows/window-class limitations even though generated
+  helper windows, screen capture, direct-window capture, remembered-window
+  capture, DWM preview, one-shot scan, and monitoring paths are covered.
+- Optional packaged tray visual hover recording remains outside the automated
+  evidence set: real show/exit tray menu clicks are covered by
+  `scripts\tray-menu-smoke.ps1`; backend tray menu, click routing, generated
+  icon pixels, tooltip text, `--start-minimized`, close-to-tray, and
+  single-instance wake paths have repeatable coverage.
+- The tiny single exe is proven on WebView2-present Windows machines; machines
+  without Microsoft Edge WebView2 Runtime still need the installer or a separate
+  WebView2 install.
+- Broader OCR quality coverage beyond the current generated English and Chinese
+  PP-OCRv5 corpus remains future work: PP-OCRv6/RapidOCR-native profile
+  compatibility, varied real screenshot accuracy, and production OCR workload
+  performance are not fully proven.

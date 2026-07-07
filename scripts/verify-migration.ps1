@@ -970,6 +970,45 @@ function Assert-AcceptanceRealGateDocumentationContract {
     }
 }
 
+function Assert-AcceptanceCurrentStatusContract {
+    param([string]$ProjectRootPath)
+
+    $acceptancePath = Join-Path $ProjectRootPath "docs\ACCEPTANCE.md"
+    if (-not (Test-Path -LiteralPath $acceptancePath)) {
+        throw "Missing acceptance checklist at $acceptancePath"
+    }
+
+    $acceptanceSource = Get-Content -LiteralPath $acceptancePath -Raw
+
+    foreach ($expected in @(
+            "Current status snapshot as of",
+            "docs\VERIFICATION_RUN_20260707_1654.md",
+            "docs\COMPARISON_AUDIT.md",
+            "19 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete,",
+            "release-single\ScreenWatchOCRTauri.exe",
+            "3,587,584 bytes",
+            "200C0C8E8EFB8AF4A2DD56A37C9762C2582C45DB441555E669A114AF5D1737B2",
+            "Windows GUI subsystem",
+            "## Remaining Validation Boundaries",
+            "600-second soak",
+            "WebView2-present Windows machines",
+            "PP-OCRv6/RapidOCR-native profile"
+        )) {
+        Assert-TextContains "acceptance current status contract" $acceptanceSource $expected
+    }
+
+    foreach ($forbidden in @(
+            "## Future Manual Gates",
+            "Full production monitoring lifecycle",
+            "Alert image full UI/runtime integration",
+            "OpenCV/Python performance comparison against representative production",
+            "only the real OCR model smoke remains blocked",
+            "only the packaged tray menu/icon click smoke remains missing"
+        )) {
+        Assert-TextNotContains "acceptance current status contract" $acceptanceSource $forbidden
+    }
+}
+
 function Assert-ManualGateRunbookContract {
     param([string]$ProjectRootPath)
 
@@ -1081,9 +1120,10 @@ function Assert-ManualGateEvidenceRiskContract {
     $webviewSmokePath = Join-Path $ProjectRootPath "scripts\webview-visual-smoke.mjs"
     $legacyProfileEvidencePath = Join-Path $ProjectRootPath "docs\manual-gate-evidence\legacy-profile-e2e-smoke.md"
     $lateWindowEvidencePath = Join-Path $ProjectRootPath "docs\manual-gate-evidence\legacy-late-window-e2e-smoke.md"
+    $productionTemplateEvidencePath = Join-Path $ProjectRootPath "docs\manual-gate-evidence\production-template-performance-smoke.md"
     $comparisonPath = Join-Path $ProjectRootPath "docs\COMPARISON_AUDIT.md"
 
-    foreach ($path in @($webviewSmokePath, $legacyProfileEvidencePath, $lateWindowEvidencePath, $comparisonPath)) {
+    foreach ($path in @($webviewSmokePath, $legacyProfileEvidencePath, $lateWindowEvidencePath, $productionTemplateEvidencePath, $comparisonPath)) {
         if (-not (Test-Path -LiteralPath $path)) {
             throw "Missing manual evidence risk contract file at $path"
         }
@@ -1092,14 +1132,28 @@ function Assert-ManualGateEvidenceRiskContract {
     $webviewSmokeSource = Get-Content -LiteralPath $webviewSmokePath -Raw
     $legacyProfileEvidence = Get-Content -LiteralPath $legacyProfileEvidencePath -Raw
     $lateWindowEvidence = Get-Content -LiteralPath $lateWindowEvidencePath -Raw
+    $productionTemplateEvidence = Get-Content -LiteralPath $productionTemplateEvidencePath -Raw
     $comparisonSource = Get-Content -LiteralPath $comparisonPath -Raw
 
     $staleLateStartRisk = "a separate late-start remembered-app gate is still needed"
-    foreach ($entry in @(
-            @{ Name = "webview visual smoke evidence generator"; Text = $webviewSmokeSource },
-            @{ Name = "legacy profile evidence record"; Text = $legacyProfileEvidence }
+    foreach ($stale in @(
+            @{
+                Text = $staleLateStartRisk
+                Entries = @(
+                    @{ Name = "webview visual smoke evidence generator"; Text = $webviewSmokeSource },
+                    @{ Name = "legacy profile evidence record"; Text = $legacyProfileEvidence }
+                )
+            },
+            @{
+                Text = "live WebView workflow, tray interaction, installer repeatability, and real OCR model smoke remain separate manual gates"
+                Entries = @(
+                    @{ Name = "production template performance evidence record"; Text = $productionTemplateEvidence }
+                )
+            }
         )) {
-        Assert-TextNotContains $entry.Name $entry.Text $staleLateStartRisk
+        foreach ($entry in @($stale.Entries)) {
+            Assert-TextNotContains $entry.Name $entry.Text $stale.Text
+        }
     }
 
     foreach ($expected in @(
@@ -1130,6 +1184,18 @@ function Assert-ManualGateEvidenceRiskContract {
             "proves late-start recovery"
         )) {
         Assert-TextContains "legacy late-window evidence record" $lateWindowEvidence $expected
+    }
+
+    foreach ($expected in @(
+            "Production Template Performance Smoke",
+            "Completion status: pass",
+            "npm run template:parity exited 0",
+            "npm run production:template:smoke exited 0",
+            "real shared profile/template files with synthetic placement",
+            "covered by separate passed manual evidence records",
+            "broader live production template distributions and longer workload performance remain future validation items"
+        )) {
+        Assert-TextContains "production template performance evidence record" $productionTemplateEvidence $expected
     }
 
     foreach ($expected in @(
@@ -2520,6 +2586,7 @@ $summary = [ordered]@{
     ocrSmokeContract = $null
     ocrSmokeMissingModelSelfTest = $null
     acceptanceRealGateContract = $null
+    acceptanceCurrentStatusContract = $null
     manualGateRunbookContract = $null
     manualGateEvidenceSelfTest = $null
     manualGateEvidenceRiskContract = $null
@@ -2801,6 +2868,13 @@ Invoke-CapturedStep `
     -Script { Assert-AcceptanceRealGateDocumentationContract $ProjectRootPath $requiredWorkspaceGateTests $requiredOcrFeatureGateTests } `
     -SuppressOutput | Out-Null
 $summary.acceptanceRealGateContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Acceptance current status contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-AcceptanceCurrentStatusContract $ProjectRootPath } `
+    -SuppressOutput | Out-Null
+$summary.acceptanceCurrentStatusContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Manual gate runbook contract" `
