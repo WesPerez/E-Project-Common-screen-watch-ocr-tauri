@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 11:07 +08:00
+Last updated: 2026-07-07 11:13 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -60,7 +60,7 @@ Everything else is separated so old and new processes do not collide:
 | WebView monitoring soak | final SHA-256 `426BE3C...` was explicitly launched through `--exe-path .\release-single\ScreenWatchOCRTauri.exe` and ran profile monitoring for 120,000ms with 61 UI samples, tick delta 220, hit delta 220, progress-log delta 47, and stopped with the button restored to `开始监控` |
 | WebView2 runtime boundary | Local read-only runtime audit found Microsoft Edge WebView2 Runtime `149.0.4022.98`; Tauri official docs confirm WebView2 is preinstalled on Windows 11 and installer-handled on older Windows versions | Final single-exe smoke proves this machine and other WebView2-present Windows machines; it does not prove machines where WebView2 has been removed or was never installed |
 | Startup shortcut isolated write/read smoke | `cargo test -p screen-watch-ocr-tauri startup_manager_writes_reads_and_removes_isolated_shortcut` passed; it wrote a real `屏幕监控OCR Tauri.lnk` under a temp Startup-shaped directory, read target/arguments/working-dir through `WScript.Shell`, then removed the temp link | Proves real `.lnk` COM creation without mutating the user's actual Startup folder |
-| Portable package verification | latest lite portable 1,616,206 bytes is freshly content-verified from the current lite build-info; full portable 3,749,839 bytes remains the latest historical full package verification; final user deliverable is the fresh single exe |
+| Portable package verification | latest lite portable 1,616,206 bytes and latest full portable 3,752,774 bytes are both freshly content-verified by `scripts\package-portable.ps1`; both keep OCR models external and reject bundled `.onnx` assets; final user deliverable remains the fresh single exe |
 | Template benchmark | 2560x1440, 8 templates: Rust flat 81ms 8/8, Rust textured 509ms 8/8; Python/OpenCV flat 59ms 8/8, Python/OpenCV textured 58ms with the known 4/8 odd-phase baseline miss |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 6583ms recorded |
 | Real OCR smoke | Current rerun passed with external PP-OCRv5 English models recognizing READY and external PP-OCRv5 Chinese models recognizing a generated `准备好了` PNG through `cargo test --features ocr`; `npm run ocr:text:parity` also compared old Python `Detector._ocr` supplied-row semantics against Rust OCR text detection/ScanEngine tests, including min_score, case sensitivity, box flattening, missing-box behavior, and a Unicode contains row |
@@ -104,7 +104,7 @@ Everything else is separated so old and new processes do not collide:
 | Lite package size | Proven | verifier lite size gate | Full OCR build remains larger but still far below Python baseline |
 | Single exe launch on arbitrary Windows PCs | Proven with boundary | final single exe smokes plus local WebView2 audit | Machines without WebView2 need the installer or WebView2 installed first; the tiny single exe intentionally does not bundle a browser engine |
 | Installer repeatability | Historical pass | manual evidence records lite/full installer smoke | Not rerun after the current UI/monitoring fix; current single-file exe smoke is fresh |
-| Portable package lite/full | Fresh lite pass, historical full pass | package verifier produced and content-verified a fresh lite portable zip after the current UI/monitoring fix; full portable zip verification is historical | None known for lite package contents; final user deliverable remains the single exe |
+| Portable package lite/full | Fresh lite and full pass | package verifier produced and content-verified fresh lite and full portable zips, including manifest/build-info/hash checks and no bundled OCR models | None known for package contents; final user deliverable remains the single exe |
 
 ## Current Conclusion
 
