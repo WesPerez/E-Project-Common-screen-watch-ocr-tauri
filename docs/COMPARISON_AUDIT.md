@@ -14,6 +14,12 @@ future.
 - SHA-256: `6363339BD12B57FAB97204785C314C62E52C6DECF73823187BBA723FCFD96BAB`
 - Build flavor: lite, OCR models external
 - Functional source state: current UI/monitoring fix set
+- Artifact identity note: `target\release\screen-watch-ocr-tauri.exe` may be
+  refreshed by later verifier/build runs and is not treated as bit-for-bit
+  proof for the delivered exe. Packaged/WebView evidence keys off the actual
+  supplied exe hash, and current WebView smoke records `buildInfoMatchesActual`
+  so a `target\release` build-info sidecar cannot be mistaken for proof of
+  `release-single\ScreenWatchOCRTauri.exe`.
 - Runtime boundary: this tiny single exe uses the system Microsoft Edge
   WebView2 runtime. The current test machine has WebView2 Runtime
   `149.0.4022.98` at

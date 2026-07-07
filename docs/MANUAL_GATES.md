@@ -8,9 +8,10 @@ Before running any manual gate, record:
 
 - Date/time and machine name.
 - Git/worktree note, or "screen-watch-ocr-tauri is not a git repository".
-- Release exe build-info hash from
-  `target\release\screen-watch-ocr-tauri.build-info.json` when a packaged exe is
-  used.
+- Actual packaged exe hash. When a gate launches a supplied exe outside
+  `target\release`, also record whether `target\release` build-info matches the
+  supplied exe. Do not treat the target build-info sidecar as proof for
+  `release-single\ScreenWatchOCRTauri.exe` when `buildInfoMatchesActual=false`.
 - Exact commands run and their exit codes.
 - Screenshots/video/log excerpts proving the observed UI state.
 - Any temporary model/image/evidence directories used.

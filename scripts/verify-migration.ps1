@@ -800,6 +800,12 @@ function Assert-TauriIdentitySeparationContract {
     if ($webviewSmokeSource.Contains('SCREENWATCH_SINGLE_INSTANCE_PORT')) {
         throw "WebView visual smoke must not use the old Python single-instance env var"
     }
+    if (-not $webviewSmokeSource.Contains('buildInfoMatchesActual')) {
+        throw "WebView visual smoke must report whether target build-info matches the supplied exe"
+    }
+    if (-not $webviewSmokeSource.Contains('not the supplied exe')) {
+        throw "WebView visual smoke must distinguish target release build-info from a supplied final exe"
+    }
 
     $docsToCheck = @(
         "docs\DECISION.md",
@@ -996,7 +1002,8 @@ function Assert-ManualGateRunbookContract {
             'packagedSmokeVerified: True',
             'real system tray menu',
             'target\release\bundle',
-            'Release exe build-info hash',
+            'Actual packaged exe hash',
+            'buildInfoMatchesActual',
             'No app process remains',
             'Production dataset description',
             'Completion status: pass | fail | blocked',
@@ -1982,7 +1989,7 @@ function Assert-SingleFileDeliverableContract {
     Assert-TextContains `
         "comparison audit current full verifier summary" `
         $audit `
-        "Latest captured full migration verifier rerun passed Python 98, Rust core 121, Tauri 88, OCR feature 25, frontend 102"
+        "Current rerun passed Python 98, Rust core 121 / 3 ignored, Tauri 88 / 16 ignored, OCR feature 25 / 2 ignored, frontend 103"
     Assert-TextContains `
         "comparison audit manual evidence status" `
         $audit `

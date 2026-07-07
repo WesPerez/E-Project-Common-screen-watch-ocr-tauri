@@ -164,19 +164,25 @@ async function waitFor(fn, description, timeoutMs = 20000, intervalMs = 250) {
   throw new Error(`Timed out waiting for ${description}.${suffix}`);
 }
 
-function readBuildInfo() {
+function readBuildInfo(actualExeHash = "") {
   if (!fs.existsSync(buildInfoPath)) {
     return {
       path: buildInfoPath,
       exists: false,
-      executableSha256: "missing",
+      executableSha256: "",
+      matchesActual: false,
     };
   }
   const parsed = JSON.parse(fs.readFileSync(buildInfoPath, "utf8").replace(/^\uFEFF/, ""));
+  const executableSha256 = String(parsed.executableSha256 || "");
+  const normalizedActual = String(actualExeHash || "").toLowerCase();
   return {
     path: buildInfoPath,
     exists: true,
     ...parsed,
+    executableSha256,
+    matchesActual:
+      Boolean(normalizedActual) && executableSha256.toLowerCase() === normalizedActual,
   };
 }
 
@@ -2383,15 +2389,28 @@ function smokeCommandText() {
   return `node scripts/webview-visual-smoke.mjs${quotedArgs.length ? ` ${quotedArgs.join(" ")}` : ""}`;
 }
 
+function buildInfoEvidenceText(buildInfo) {
+  if (!buildInfo.exists) {
+    return `build-info unavailable at ${buildInfo.path}`;
+  }
+  const parts = [
+    `buildInfoExecutableSha256=${buildInfo.executableSha256 || "missing"}`,
+    `buildInfo=${relativePath(buildInfo.path)}`,
+    `buildInfoMatchesActual=${buildInfo.matchesActual ? "true" : "false"}`,
+  ];
+  if (!buildInfo.matchesActual) {
+    parts.push("build-info describes the current target release build, not the supplied exe");
+  }
+  return parts.join("; ");
+}
+
 function evidenceRecord({ gateTitle, status, observed, evidenceFiles, remainingRisk }) {
-  const buildInfo = readBuildInfo();
   const actualExeHash = fs.existsSync(exePath) ? fileSha256(exePath) : "missing";
+  const buildInfo = readBuildInfo(actualExeHash);
   const releaseHash = [
     `actualExeSha256=${actualExeHash}`,
     `exePath=${relativePath(exePath)}`,
-    buildInfo.executableSha256
-      ? `buildInfoExecutableSha256=${buildInfo.executableSha256}; buildInfo=${relativePath(buildInfo.path)}`
-      : `build-info unavailable at ${buildInfo.path}`,
+    buildInfoEvidenceText(buildInfo),
   ].join("; ");
   return [
     `Gate: ${gateTitle}`,
@@ -2639,10 +2658,11 @@ async function main() {
     await runLayoutGate();
   }
 
+  const actualExeHash = fs.existsSync(exePath) ? fileSha256(exePath) : "";
   const summary = {
     runStamp,
     exePath,
-    buildInfo: readBuildInfo(),
+    buildInfo: readBuildInfo(actualExeHash),
     cdpPort,
     singleInstancePort,
     helperTitle,
