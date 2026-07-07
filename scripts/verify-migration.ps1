@@ -1921,6 +1921,14 @@ function Assert-SingleFileDeliverableContract {
     $audit = Get-Content -LiteralPath $auditPath -Raw
     Assert-TextContains "comparison audit current deliverable size" $audit "- Size: $($exeItem.Length) bytes"
     Assert-TextContains "comparison audit current deliverable hash" $audit "- SHA-256: ``$sha256``"
+    Assert-TextContains `
+        "comparison audit current full verifier summary" `
+        $audit `
+        "Latest captured full migration verifier rerun passed Python 98, Rust core 121, Tauri 88, OCR feature 25, frontend 102"
+    Assert-TextContains `
+        "comparison audit manual evidence status" `
+        $audit `
+        "| Manual evidence status | 16 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |"
 
     return "$($exeItem.Length) bytes, $sha256, WindowsGui"
 }

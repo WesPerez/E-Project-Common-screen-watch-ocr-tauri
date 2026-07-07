@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 11:13 +08:00
+Last updated: 2026-07-07 11:24 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -52,7 +52,7 @@ Everything else is separated so old and new processes do not collide:
 | Evidence | Current result |
 | --- | --- |
 | Python baseline unittest | Current rerun passed 98 tests with `PYTHONPATH=src; python -m unittest -v`; `python -m screen_watch app --smoke-test` returned `{"ok": true, "monitors": 3}` |
-| Main migration verifier | Latest full verifier evidence in this audit passed Python 98, Rust core 121, Tauri 87, OCR feature 25, frontend 102, frontend production build, lite release build, dependency boundaries, and all static contracts. After the WebView smoke harness and isolated startup-shortcut test were added, a current-state light verifier passed Rust core 121, Tauri 88, OCR feature 25, dependency boundaries, documentation contracts, manual evidence self-test, command/DOM/event contracts, and `singleFileDeliverableContract`. The heavier real OCR, template benchmark, packaged, desktop, tray, and WebView gates are tracked separately below. `legacyVisibleWorkflowContract` maps old visible Python workflows to new controls, frontend handlers, and registered Tauri commands; `legacyProfilePersistenceContract` locks Python `save_state`/`save_current_profile` field placement; `audioAlarmParityContract` locks Python `winsound.PlaySound(..., SND_MEMORY)` behavior against the Tauri runtime; `singleFileDeliverableContract` verifies `release-single\ScreenWatchOCRTauri.exe` size/hash and WindowsGui subsystem |
+| Main migration verifier | Latest captured full migration verifier rerun passed Python 98, Rust core 121, Tauri 88, OCR feature 25, frontend 102, frontend production build, lite release build, dependency boundaries, documentation contracts, manual evidence self-test, command/DOM/event contracts, and `singleFileDeliverableContract`; it also recorded `requiredRealGates: 19 workspace gates, 2 OCR gates`, `liteSizeGate: passed`, Python exe 102,021,797 bytes, and Tauri lite exe 3,587,072 bytes. The heavier real OCR, template benchmark, packaged, desktop, tray, and WebView gates are tracked separately below. `legacyVisibleWorkflowContract` maps old visible Python workflows to new controls, frontend handlers, and registered Tauri commands; `legacyProfilePersistenceContract` locks Python `save_state`/`save_current_profile` field placement; `audioAlarmParityContract` locks Python `winsound.PlaySound(..., SND_MEMORY)` behavior against the Tauri runtime; `singleFileDeliverableContract` verifies `release-single\ScreenWatchOCRTauri.exe` size/hash and WindowsGui subsystem |
 | Desktop smoke | Current rerun passed 16 real Windows desktop gates: screen capture, monitor listing, one-shot screen/window scan, profile screen/window scan, screen/window/remembered-window screenshot-as-template capture, persistent screen/window monitoring, app-window enumeration, preview/frame capture, and real DWM thumbnail register/update/clear |
 | Packaged smoke | final SHA-256 `426BE3C...` is PE subsystem WindowsGui (2), not console; it passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port using `release-single\ScreenWatchOCRTauri.exe` |
 | Tray menu smoke | final SHA-256 `426BE3C...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0; old Python tray/processes were not touched |
@@ -64,7 +64,7 @@ Everything else is separated so old and new processes do not collide:
 | Template benchmark | 2560x1440, 8 templates: Rust flat 81ms 8/8, Rust textured 509ms 8/8; Python/OpenCV flat 59ms 8/8, Python/OpenCV textured 58ms with the known 4/8 odd-phase baseline miss |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 6583ms recorded |
 | Real OCR smoke | Current rerun passed with external PP-OCRv5 English models recognizing READY and external PP-OCRv5 Chinese models recognizing a generated `准备好了` PNG through `cargo test --features ocr`; `npm run ocr:text:parity` also compared old Python `Detector._ocr` supplied-row semantics against Rust OCR text detection/ScanEngine tests, including min_score, case sensitivity, box flattening, missing-box behavior, and a Unicode contains row |
-| Manual evidence status | 16 pass, 0 blocked, 0 fail, 0 missing |
+| Manual evidence status | 16 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |
 
 ## Feature Matrix
 
