@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "test:frontend": "node --test src/*.test.js",
+    "audit:feature-surface": "node scripts/feature-surface-audit.mjs",
     "verify:migration": "powershell -ExecutionPolicy Bypass -File scripts/verify-migration.ps1",
     "ocr:smoke": "powershell -ExecutionPolicy Bypass -File scripts/ocr-smoke.ps1",
     "ocr:corpus:smoke": "powershell -ExecutionPolicy Bypass -File scripts/ocr-corpus-smoke.ps1",

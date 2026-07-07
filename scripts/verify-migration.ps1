@@ -575,6 +575,7 @@ function Assert-PackageScriptContract {
         "dev" = "vite --host 127.0.0.1"
         "build" = "vite build"
         "test:frontend" = "node --test src/*.test.js"
+        "audit:feature-surface" = "node scripts/feature-surface-audit.mjs"
         "verify:migration" = "powershell -ExecutionPolicy Bypass -File scripts/verify-migration.ps1"
         "ocr:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-smoke.ps1"
         "ocr:corpus:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-corpus-smoke.ps1"
@@ -617,6 +618,7 @@ function Assert-PackageScriptContract {
 
     foreach ($scriptPath in @(
             "scripts\verify-migration.ps1",
+            "scripts\feature-surface-audit.mjs",
             "scripts\ocr-smoke.ps1",
             "scripts\ocr-corpus-smoke.ps1",
             "scripts\ocr-text-parity-smoke.ps1",
@@ -2665,6 +2667,7 @@ $summary = [ordered]@{
     frontendDynamicTargetContract = $null
     legacyVisibleWorkflowContract = $null
     legacyUiSurfaceContract = $null
+    featureSurfaceAudit = $null
     legacyDefaultSettingsContract = $null
     legacyFailureGuardContract = $null
     legacyTemplateFileBoundaryContract = $null
@@ -3020,6 +3023,13 @@ Invoke-CapturedStep `
     -Script { Assert-LegacyUiSurfaceContract $ProjectRootPath $PythonProjectPath } `
     -SuppressOutput | Out-Null
 $summary.legacyUiSurfaceContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Feature surface audit" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { node scripts\feature-surface-audit.mjs $PythonProjectPath } `
+    -SuppressOutput | Out-Null
+$summary.featureSurfaceAudit = "passed"
 
 Invoke-CapturedStep `
     -Name "Legacy default settings contract" `
