@@ -565,14 +565,19 @@ function Assert-PackageScriptContract {
         "verify:migration" = "powershell -ExecutionPolicy Bypass -File scripts/verify-migration.ps1"
         "ocr:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-smoke.ps1"
         "ocr:corpus:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-corpus-smoke.ps1"
+        "ocr:text:parity" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-text-parity-smoke.ps1"
         "template:benchmark" = "powershell -ExecutionPolicy Bypass -File scripts/template-benchmark.ps1"
         "template:parity" = "powershell -ExecutionPolicy Bypass -File scripts/template-parity-benchmark.ps1"
         "production:template:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/production-template-performance-smoke.ps1"
         "packaged:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/packaged-smoke.ps1"
+        "tray:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/tray-menu-smoke.ps1"
+        "coexistence:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/coexistence-smoke.ps1"
         "python:profile:compat" = "powershell -ExecutionPolicy Bypass -File scripts/python-profile-compat-smoke.ps1"
         "manual:evidence" = "powershell -ExecutionPolicy Bypass -File scripts/manual-gate-evidence.ps1"
         "evidence:references" = "powershell -ExecutionPolicy Bypass -File scripts/evidence-reference-check.ps1"
         "webview:visual:smoke" = "node scripts/webview-visual-smoke.mjs"
+        "webview:clipboard:smoke" = "node scripts/webview-visual-smoke.mjs --gate clipboard"
+        "webview:scan:smoke" = "node scripts/webview-visual-smoke.mjs --gate scan"
         "webview:ocr-lite:smoke" = "node scripts/webview-visual-smoke.mjs --gate ocr-lite-boundary"
         "webview:monitoring:smoke" = "node scripts/webview-visual-smoke.mjs --gate monitoring"
         "webview:monitoring:soak" = "node scripts/webview-visual-smoke.mjs --gate monitoring-soak"
@@ -601,10 +606,13 @@ function Assert-PackageScriptContract {
             "scripts\verify-migration.ps1",
             "scripts\ocr-smoke.ps1",
             "scripts\ocr-corpus-smoke.ps1",
+            "scripts\ocr-text-parity-smoke.ps1",
             "scripts\template-benchmark.ps1",
             "scripts\template-parity-benchmark.ps1",
             "scripts\production-template-performance-smoke.ps1",
             "scripts\packaged-smoke.ps1",
+            "scripts\tray-menu-smoke.ps1",
+            "scripts\coexistence-smoke.ps1",
             "scripts\python-profile-compat-smoke.ps1",
             "scripts\manual-gate-evidence.ps1",
             "scripts\evidence-reference-check.ps1",
@@ -977,6 +985,7 @@ function Assert-ManualGateRunbookContract {
             "## WebView Layout Resize Smoke",
             "## Packaged App Smoke",
             "## Packaged Tray Menu And Icon Smoke",
+            "## Packaged Python Tauri Coexistence Smoke",
             "## Installer Repeatability Smoke",
             "## Production Template Performance Smoke"
         )) {
@@ -1005,6 +1014,7 @@ function Assert-ManualGateRunbookContract {
             'npm run tauri:build:lite',
             'npm run tauri:build:full',
             'npm run tray:smoke -- -ExePath target\release\screen-watch-ocr-tauri.exe',
+            'npm run coexistence:smoke -- -TauriExePath target\release\screen-watch-ocr-tauri.exe',
             'npm run manual:evidence -- -New',
             'npm run manual:evidence -- -Status',
             'npm run manual:evidence',

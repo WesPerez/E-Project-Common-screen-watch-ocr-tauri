@@ -580,6 +580,36 @@ Expected evidence:
 - Screenshot/video or log showing monitoring tooltip/icon state.
 - Process exits after the tray exit action.
 
+## Packaged Python Tauri Coexistence Smoke
+
+Build or reuse a lite release exe and keep the old packaged Python exe
+available:
+
+```powershell
+npm run tauri:build:lite
+```
+
+Run the coexistence smoke against the Tauri exe:
+
+```powershell
+npm run coexistence:smoke -- -TauriExePath target\release\screen-watch-ocr-tauri.exe
+```
+
+Expected evidence:
+
+- Python exe name/process name stays `ScreenWatchOCR.exe` / `ScreenWatchOCR`.
+- Tauri exe name/process name stays `screen-watch-ocr-tauri.exe` or the
+  delivered `ScreenWatchOCRTauri.exe` / `ScreenWatchOCRTauri`.
+- Python port `47627` and Tauri port `47628` are both busy while both primary
+  apps run.
+- `ScreenWatchOCRTauri:show` is rejected by the Python port, and
+  `ScreenWatchOCR:show` is rejected by the Tauri port.
+- Each app accepts only its own single-instance command and each second
+  instance exits 0.
+- Tauri WebView2 child command lines use the smoke-owned user-data folder.
+- Cleanup notes prove only smoke-owned Python/Tauri process trees and temp
+  roots were removed.
+
 ## Installer Repeatability Smoke
 
 Prerequisites:
