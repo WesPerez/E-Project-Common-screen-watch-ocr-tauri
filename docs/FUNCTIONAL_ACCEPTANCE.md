@@ -42,6 +42,11 @@ python -m unittest discover -s tests -v
   per-profile `match.max_alerts` field, though old Tauri-written values are
   tolerated when reading and cleaned on the next profile save.
 - Templates remain under `templates/`.
+- Template import/delete/clear file boundaries remain Python-compatible:
+  imported image files are normalized under `templates/`, and remove/clear
+  operations may delete only template files under `templates/`; external target
+  paths must be preserved. This is locked by
+  `legacyTemplateFileBoundaryContract`.
 - Alert screenshots remain under `screenshots/` when using GUI profiles.
 - Alert JSONL remains `alerts.jsonl` for GUI profiles.
 - CLI/demo configs using `evidence/alerts` and `evidence/alerts.jsonl` remain

@@ -1967,6 +1967,82 @@ function Assert-LegacyFailureGuardContract {
     }
 }
 
+function Assert-LegacyTemplateFileBoundaryContract {
+    param(
+        [string]$ProjectRootPath,
+        [string]$PythonProjectPath
+    )
+
+    $pythonSource = Get-Content -LiteralPath (Join-Path $PythonProjectPath "src\screen_watch\app.py") -Raw
+    $profileSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "crates\screen-watch-core\src\profile.rs") -Raw
+    $backendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\lib.rs") -Raw
+    $acceptanceSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "docs\FUNCTIONAL_ACCEPTANCE.md") -Raw
+
+    foreach ($expected in @(
+            'target_dir = DATA_DIR / "templates"',
+            'image.convert("RGB").save(path)',
+            'def delete_target_files(target):',
+            'for key, parent in (("path", DATA_DIR / "templates"),):',
+            'if path and is_under(path, parent):',
+            'Path(path).unlink(missing_ok=True)',
+            'if not path.exists() or not is_under(path, DATA_DIR / "templates"):',
+            'def prune_targets(self, keep_count):',
+            'delete_target_files(target)',
+            'def remove_selected(self):',
+            'def clear_targets(self):'
+        )) {
+        Assert-TextContains "legacy template file boundary in Python app" $pythonSource $expected
+    }
+
+    foreach ($expected in @(
+            'pub fn delete_target_files(',
+            'let templates = templates_dir(data_dir);',
+            'if !is_under_existing(&path, &templates) {',
+            'fs::remove_file(path)?;',
+            'pub fn add_profile_template_pngs_at(',
+            'pub fn add_profile_template_frames_at(',
+            'let target_path = templates_dir(data_dir).join(format!("{stem}.png"));',
+            'pub fn remove_profile_target_at(',
+            'pub fn clear_profile_targets_at(',
+            'delete_target_files(&removed, data_dir)?',
+            'delete_target_files(target, data_dir)?',
+            'delete_target_files_only_removes_files_under_templates',
+            'normalize_target_names_leaves_external_or_missing_paths_untouched_except_metadata',
+            'add_profile_template_pngs_converts_common_images_to_png_templates',
+            'add_profile_template_frames_writes_clipboard_frame_as_png_template',
+            'remove_profile_target_deletes_template_file_and_preserves_external_file',
+            'clear_profile_targets_deletes_only_template_files',
+            'assert!(external.exists());'
+        )) {
+        Assert-TextContains "legacy template file boundary in Rust profile core" $profileSource $expected
+    }
+
+    foreach ($expected in @(
+            'add_profile_template_frames_at(&profile, &data_dir, 1, &frames, 10)',
+            'let template_root = templates_dir(&data_dir).canonicalize().unwrap();',
+            'path.canonicalize().unwrap().starts_with(&template_root)',
+            'remove_profile_target_at(&profile, &data_dir, 1, 1)',
+            'assert_eq!(removed.deleted_files, 1);',
+            'let external = tmp.path().join("external.png");',
+            'clear_profile_targets_at(&profile, &data_dir)',
+            'assert_eq!(cleared.deleted_files, template_paths_before_clear.len());',
+            'assert!(external.exists());',
+            'assert_eq!(stored["future"], json!(true));'
+        )) {
+        Assert-TextContains "legacy template file boundary in Tauri backend workflow" $backendSource $expected
+    }
+
+    foreach ($expected in @(
+            'Templates remain under `templates/`.',
+            'Removing a selected target deletes only template files under `templates/`',
+            'Clearing all targets deletes only template files under `templates/`',
+            'PNG/JPG/JPEG/BMP/WEBP inputs are decoded and normalized to RGB PNG files under `templates/`',
+            'later clear preserves an external file'
+        )) {
+        Assert-TextContains "legacy template file boundary acceptance docs" $acceptanceSource $expected
+    }
+}
+
 function Assert-LegacyProfilePersistenceContract {
     param(
         [string]$ProjectRootPath,
@@ -2379,6 +2455,7 @@ $summary = [ordered]@{
     legacyUiSurfaceContract = $null
     legacyDefaultSettingsContract = $null
     legacyFailureGuardContract = $null
+    legacyTemplateFileBoundaryContract = $null
     legacyProfilePersistenceContract = $null
     audioAlarmParityContract = $null
     frontendOcrReadinessContract = $null
@@ -2730,6 +2807,13 @@ Invoke-CapturedStep `
     -Script { Assert-LegacyFailureGuardContract $ProjectRootPath $PythonProjectPath } `
     -SuppressOutput | Out-Null
 $summary.legacyFailureGuardContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Legacy template file boundary contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-LegacyTemplateFileBoundaryContract $ProjectRootPath $PythonProjectPath } `
+    -SuppressOutput | Out-Null
+$summary.legacyTemplateFileBoundaryContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Legacy profile persistence contract" `
