@@ -60,8 +60,9 @@ const SOURCE_PREVIEW_BUSY_RETRY_MS = 250;
 const LAYOUT_STORAGE_KEY = "screen-watch-ocr-tauri:workbench-layout:v1";
 const MONITOR_HEARTBEAT_MS = 1000;
 const CONTROL_ROW_KEYS = ["screens", "apps", "region", "match", "run"];
-const CONTROL_ROW_DEFAULTS = [116, 116, 142, 260, 116];
-const CONTROL_ROW_MINIMUMS = [70, 70, 92, 156, 92];
+const CONTROL_ROW_DEFAULTS = [116, 116, 142, 244, 150];
+const CONTROL_ROW_MINIMUMS = [70, 70, 92, 156, 144];
+const CLIPBOARD_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "bmp", "webp"]);
 
 let currentMonitors = [];
 let currentWindows = [];
@@ -94,6 +95,7 @@ let monitorHeartbeatPolling = false;
 let monitoringUiGeneration = 0;
 let currentMonitoringGeneration = 0;
 let stoppedMonitoringGeneration = 0;
+let profilePasteFallbackTimer = null;
 
 async function refresh() {
   const status = document.querySelector("#status");
@@ -512,6 +514,49 @@ function currentTargetRows() {
   };
 }
 
+function cssPixels(value) {
+  const number = Number.parseFloat(String(value || ""));
+  return Number.isFinite(number) ? number : 0;
+}
+
+function contentBoxHeight(element) {
+  if (!element) {
+    return 0;
+  }
+  const style = window.getComputedStyle(element);
+  return Math.max(
+    0,
+    element.clientHeight -
+      cssPixels(style.paddingTop) -
+      cssPixels(style.paddingBottom),
+  );
+}
+
+function gridRowGap(element) {
+  if (!element) {
+    return 0;
+  }
+  const style = window.getComputedStyle(element);
+  return cssPixels(style.rowGap || style.gap);
+}
+
+function targetRowsAvailableHeight() {
+  const panel = document.querySelector(".target-panel");
+  const head = panel?.querySelector(".panel-head");
+  const toolbar = panel?.querySelector(".target-toolbar");
+  const splitter = panel?.querySelector('[data-splitter="targets-log"]');
+  if (!panel || !head || !toolbar || !splitter) {
+    return 0;
+  }
+  const gapTotal = gridRowGap(panel) * 4;
+  const fixedHeight =
+    head.getBoundingClientRect().height +
+    toolbar.getBoundingClientRect().height +
+    splitter.getBoundingClientRect().height +
+    gapTotal;
+  return Math.max(1, Math.round(contentBoxHeight(panel) - fixedHeight));
+}
+
 function currentControlRows() {
   const groups = Array.from(
     document.querySelectorAll(".control-panel > .control-group"),
@@ -535,11 +580,12 @@ function workbenchColumnOptions() {
 
 function targetRowOptions() {
   const current = currentTargetRows();
-  const total = Math.max(1, current.first + current.second);
+  const availableTotal = targetRowsAvailableHeight();
+  const currentTotal = current.first + current.second;
   return {
     minFirst: 120,
     minSecond: 88,
-    total,
+    total: Math.max(1, Math.round(availableTotal || currentTotal || 1)),
   };
 }
 
@@ -553,16 +599,15 @@ function controlSplitterHeight() {
 function controlRowOptions() {
   const panel = document.querySelector(".control-panel");
   const current = currentControlRows();
-  const currentTotal = current.reduce((sum, value) => sum + value, 0);
   const panelTotal = Math.max(
     1,
-    (panel?.clientHeight || 1) - controlSplitterHeight(),
+    contentBoxHeight(panel) - controlSplitterHeight(),
   );
   return {
     count: CONTROL_ROW_KEYS.length,
     defaults: CONTROL_ROW_DEFAULTS,
     minimums: CONTROL_ROW_MINIMUMS,
-    total: Math.max(1, Math.round(currentTotal || panelTotal)),
+    total: Math.max(1, Math.round(panelTotal)),
   };
 }
 
@@ -2212,6 +2257,137 @@ async function pasteProfileImages() {
   }
 }
 
+async function pasteProfileImageFiles(files) {
+  const status = document.querySelector("#status");
+  status.textContent = "粘贴图片...";
+  try {
+    const images = await Promise.all(
+      files.map((file, index) => clipboardFilePayload(file, index)),
+    );
+    const importResult = await invoke("add_profile_template_clipboard_images", {
+      profileNumber: selectedProfileNumber(),
+      images,
+      maxTemplates: profileImportLimitValue(),
+    });
+    applyProfileEditSelection(importResult);
+    await loadProfile();
+    status.textContent = profileImportStatusText(importResult);
+  } catch (error) {
+    document.querySelector("#profile-result").textContent = String(error);
+    status.textContent = String(error);
+  }
+}
+
+async function clipboardFilePayload(file, index) {
+  const buffer = await file.arrayBuffer();
+  return {
+    name: file.name || clipboardFileName(file.type, index),
+    mimeType: file.type || "",
+    dataBase64: arrayBufferToBase64(buffer),
+  };
+}
+
+function clipboardFileName(mimeType, index) {
+  const extension = extensionFromMimeType(mimeType) || "png";
+  return `clipboard-${index + 1}.${extension}`;
+}
+
+function extensionFromMimeType(mimeType) {
+  switch (String(mimeType || "").toLowerCase()) {
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/bmp":
+    case "image/x-ms-bmp":
+      return "bmp";
+    case "image/webp":
+      return "webp";
+    default:
+      return "";
+  }
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function clipboardImageFiles(clipboardData) {
+  const files = [];
+  const seen = new Set();
+  const addFile = (file) => {
+    if (!file || !fileLooksLikeImage(file)) {
+      return;
+    }
+    const key = `${file.name || ""}\0${file.type || ""}\0${file.size || 0}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    files.push(file);
+  };
+
+  for (const file of Array.from(clipboardData?.files || [])) {
+    addFile(file);
+  }
+  for (const item of Array.from(clipboardData?.items || [])) {
+    if (item.kind !== "file") {
+      continue;
+    }
+    addFile(item.getAsFile?.());
+  }
+  return files;
+}
+
+function fileLooksLikeImage(file) {
+  const type = String(file?.type || "").toLowerCase();
+  if (type.startsWith("image/")) {
+    return true;
+  }
+  const extension = String(file?.name || "")
+    .split(".")
+    .pop()
+    .toLowerCase();
+  return CLIPBOARD_IMAGE_EXTENSIONS.has(extension);
+}
+
+async function handleProfilePasteEvent(event) {
+  if (!shouldHandleProfilePaste({ key: "v", ctrlKey: true }, document.activeElement)) {
+    return;
+  }
+  cancelProfilePasteFallback();
+  event.preventDefault();
+  const files = clipboardImageFiles(event.clipboardData);
+  if (files.length > 0) {
+    await pasteProfileImageFiles(files);
+    return;
+  }
+  await pasteProfileImages();
+}
+
+function scheduleProfilePasteFallback() {
+  cancelProfilePasteFallback();
+  profilePasteFallbackTimer = window.setTimeout(() => {
+    profilePasteFallbackTimer = null;
+    pasteProfileImages();
+  }, 180);
+}
+
+function cancelProfilePasteFallback() {
+  if (!profilePasteFallbackTimer) {
+    return;
+  }
+  window.clearTimeout(profilePasteFallbackTimer);
+  profilePasteFallbackTimer = null;
+}
+
 function profileImportLimitInput() {
   return document.querySelector("#profile-max-templates").value;
 }
@@ -2521,15 +2697,26 @@ installCustomCheckIndicators(document);
 const profileTargetList = document.querySelector("#profile-targets");
 installWheelScroll(profileTargetList);
 installAutohideScrollbar(profileTargetList);
+document.querySelector(".target-panel")?.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("button,input,textarea,select")) {
+    return;
+  }
+  event.currentTarget.focus({ preventScroll: true });
+});
 installWorkbenchSplitters();
 document.addEventListener("click", hideTargetContextMenu);
+document.addEventListener("paste", (event) => {
+  handleProfilePasteEvent(event).catch((error) => {
+    document.querySelector("#profile-result").textContent = String(error);
+    document.querySelector("#status").textContent = String(error);
+  });
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     hideTargetContextMenu();
   }
   if (shouldHandleProfilePaste(event, document.activeElement)) {
-    event.preventDefault();
-    pasteProfileImages();
+    scheduleProfilePasteFallback();
   }
 });
 window.addEventListener(

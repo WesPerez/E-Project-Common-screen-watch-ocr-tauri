@@ -100,15 +100,15 @@ h2 {
   --control-screens-height: 116px;
   --control-apps-height: 116px;
   --control-region-height: 142px;
-  --control-match-height: 260px;
-  --control-run-height: 116px;
+  --control-match-height: 244px;
+  --control-run-height: 150px;
   --left-pane-width: 1fr;
   --log-pane-height: 170px;
   --preview-pane-width: 0.75fr;
   --splitter-size: 9px;
-  --target-card-height: 52px;
-  --target-card-width: 48px;
-  --target-thumb-height: 25px;
+  --target-card-height: 96px;
+  --target-card-width: 96px;
+  --target-thumb-height: 72px;
   --target-list-pane-height: 1fr;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -189,8 +189,8 @@ h2 {
 
 .target-panel {
   grid-template-rows:
-    auto
-    auto
+    max-content
+    max-content
     minmax(120px, var(--target-list-pane-height))
     var(--splitter-size)
     minmax(88px, var(--log-pane-height));
@@ -208,7 +208,7 @@ h2 {
     var(--splitter-size)
     minmax(156px, var(--control-match-height))
     var(--splitter-size)
-    minmax(92px, var(--control-run-height));
+    minmax(144px, var(--control-run-height));
   padding: 8px;
   gap: 0;
   overflow: hidden;
@@ -225,6 +225,7 @@ h2 {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
+  align-self: start;
 }
 
 .panel-head.compact {
@@ -244,6 +245,7 @@ h2 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 8px;
+  align-self: start;
 }
 
 .target-toolbar button {
@@ -299,7 +301,7 @@ h2 {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 0;
-  padding: 2px;
+  padding: 4px;
 }
 
 .target-card.is-selected {
@@ -333,11 +335,11 @@ h2 {
 
 .target-enable-check {
   position: absolute;
-  top: 3px;
-  left: 3px;
+  top: 5px;
+  left: 5px;
   z-index: 2;
-  --check-size: 10px;
-  --check-mark-stroke: 1.7px;
+  --check-size: 14px;
+  --check-mark-stroke: 2px;
 }
 
 .target-thumb {
@@ -350,7 +352,7 @@ h2 {
   overflow: hidden;
   background: #f0f1f3;
   color: #6d7580;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .target-thumb img {
@@ -372,23 +374,23 @@ h2 {
 
 .target-hit-badge {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 12px;
-  height: 12px;
-  border-radius: 5px;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 16px;
+  border-radius: 6px;
   background: #d92935;
   color: #ffffff;
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 700;
-  line-height: 12px;
+  line-height: 16px;
   text-align: center;
 }
 
 .target-text {
   display: block;
   min-width: 0;
-  padding: 2px 1px 0;
+  padding: 3px 1px 0;
   text-align: center;
 }
 
@@ -396,7 +398,7 @@ h2 {
   display: block;
   overflow: hidden;
   color: #10141c;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -423,11 +425,11 @@ h2 {
 }
 
 .target-actions button {
-  min-height: 15px;
+  min-height: 18px;
   min-width: 0;
   padding: 0 1px;
   overflow: hidden;
-  font-size: 8px;
+  font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -533,6 +535,7 @@ body.is-resizing-layout.is-resizing-vertical {
 
 .control-group {
   display: grid;
+  align-content: start;
   gap: 5px;
   min-height: 0;
   border: 1px solid #d8dde5;
@@ -541,7 +544,7 @@ body.is-resizing-layout.is-resizing-vertical {
   padding: 7px;
 }
 
-.control-group:not(.settings-grid) {
+.control-group:not(.settings-grid):not(.run-group) {
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
@@ -609,8 +612,14 @@ body.is-resizing-layout.is-resizing-vertical {
 
 .run-group button {
   width: 100%;
-  min-height: 32px;
+  min-height: 34px;
   font-size: 15px;
+}
+
+.run-group {
+  grid-template-rows: max-content repeat(3, max-content);
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .check-control {

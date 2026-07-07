@@ -45,7 +45,7 @@ use screen_watch_core::{
     scan::{ScanEngine, ScanFrameResult},
     sources::{resolve_sources, MonitorInfo, ResolvedRegion, ResolvedSources},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use startup::{unsupported_status, StartupManager, StartupStatus};
 use std::{
@@ -63,6 +63,14 @@ struct AppInfo {
     build_flavor: String,
     data_dir: String,
     ocr: OcrAvailability,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardImagePayload {
+    name: Option<String>,
+    mime_type: Option<String>,
+    data_base64: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -677,6 +685,52 @@ fn paste_profile_template_images(
     let (data_dir, path) = checked_profile_path(profile_number)?;
     add_profile_template_frames_at(path, data_dir, profile_number, &frames, max_templates)
         .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn add_profile_template_clipboard_images(
+    profile_number: u32,
+    images: Vec<ClipboardImagePayload>,
+    max_templates: usize,
+) -> Result<AddTemplateImagesResult, String> {
+    if images.is_empty() {
+        return Err("剪贴板里没有图片；用截图工具复制后再按 Ctrl+V。".to_string());
+    }
+    let mut frames = Vec::with_capacity(images.len());
+    for (index, image) in images.into_iter().enumerate() {
+        let bytes = BASE64_STANDARD
+            .decode(image.data_base64.as_bytes())
+            .map_err(|err| format!("cannot decode clipboard image data: {err}"))?;
+        let fallback = image
+            .mime_type
+            .as_deref()
+            .and_then(extension_from_mime_type)
+            .map(|ext| format!("clipboard-{}.{}", index + 1, ext))
+            .unwrap_or_else(|| format!("clipboard-{}", index + 1));
+        let label = image
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or(&fallback);
+        frames.push(
+            screen_watch_core::detect::RgbFrame::from_image_bytes(label, &bytes)
+                .map_err(|err| err.to_string())?,
+        );
+    }
+    let (data_dir, path) = checked_profile_path(profile_number)?;
+    add_profile_template_frames_at(path, data_dir, profile_number, &frames, max_templates)
+        .map_err(|err| err.to_string())
+}
+
+fn extension_from_mime_type(mime_type: &str) -> Option<&'static str> {
+    match mime_type.trim().to_ascii_lowercase().as_str() {
+        "image/png" => Some("png"),
+        "image/jpeg" | "image/jpg" => Some("jpg"),
+        "image/bmp" | "image/x-ms-bmp" => Some("bmp"),
+        "image/webp" => Some("webp"),
+        _ => None,
+    }
 }
 
 #[tauri::command]
@@ -1483,6 +1537,7 @@ pub fn run() {
             add_profile_template_pngs,
             select_profile_template_pngs,
             paste_profile_template_images,
+            add_profile_template_clipboard_images,
             capture_profile_source_template,
             reorder_profile_target,
             remove_profile_target,

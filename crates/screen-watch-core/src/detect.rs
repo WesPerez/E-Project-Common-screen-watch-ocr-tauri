@@ -10,12 +10,13 @@ use std::{
 };
 use thiserror::Error;
 
-const COARSE_AREA: u64 = 2560 * 1440;
+const COARSE_AREA: u64 = 1280 * 720;
 const QUARTER_AREA: u64 = 3840 * 2160;
 const COARSE_CANDIDATES: usize = 3;
-const TEXTURED_COARSE_CANDIDATES: usize = 1;
+const TEXTURED_COARSE_CANDIDATES: usize = 8;
 const COARSE_CANDIDATE_POOL_MULTIPLIER: usize = 8;
 const REFINE_MARGIN: u32 = 16;
+const EXACT_GRAY_MAX_POSITIONS: u64 = 250_000;
 const PERFECT_SCORE_THRESHOLD: f32 = 1.0 - 1e-6;
 
 #[derive(Debug, Error)]
@@ -307,6 +308,18 @@ impl RgbFrame {
                 message,
             }
         })
+    }
+
+    pub fn from_image_bytes(label: impl Into<PathBuf>, bytes: &[u8]) -> Result<Self, DetectError> {
+        let path = label.into();
+        let image = image::load_from_memory(bytes)
+            .map_err(|err| DetectError::TemplateDecode {
+                path: path.clone(),
+                message: err.to_string(),
+            })?
+            .to_rgb8();
+        Self::new(image.width(), image.height(), image.into_raw())
+            .map_err(|message| DetectError::TemplateDecode { path, message })
     }
 
     pub fn pixel(&self, x: u32, y: u32) -> Option<[u8; 3]> {
@@ -775,8 +788,12 @@ fn find_template_best_gray_adaptive(
     template: &GrayFrame,
 ) -> Option<TemplateMatch> {
     let frame = frame_cache.full();
-    if let Some(hit) = find_template_exact_gray(frame, template) {
-        return Some(hit);
+    if should_try_exact_gray(frame, template) {
+        if let Some(hit) =
+            find_template_exact_gray_bounded(frame, template, EXACT_GRAY_MAX_POSITIONS)
+        {
+            return Some(hit);
+        }
     }
     let full_integral = frame_cache.integral_for_factor(1.0);
     let Some((factor, coarse_templates)) = coarse_plan(frame, template) else {
@@ -856,11 +873,33 @@ fn find_template_best_gray_adaptive(
     best
 }
 
-fn find_template_exact_gray(frame: &GrayFrame, template: &GrayFrame) -> Option<TemplateMatch> {
+fn should_try_exact_gray(frame: &GrayFrame, template: &GrayFrame) -> bool {
     if template.width == 0
         || template.height == 0
         || template.width > frame.width
         || template.height > frame.height
+        || template.is_flat()
+    {
+        return false;
+    }
+    true
+}
+
+#[cfg(test)]
+fn find_template_exact_gray(frame: &GrayFrame, template: &GrayFrame) -> Option<TemplateMatch> {
+    find_template_exact_gray_bounded(frame, template, u64::MAX)
+}
+
+fn find_template_exact_gray_bounded(
+    frame: &GrayFrame,
+    template: &GrayFrame,
+    max_positions: u64,
+) -> Option<TemplateMatch> {
+    if template.width == 0
+        || template.height == 0
+        || template.width > frame.width
+        || template.height > frame.height
+        || max_positions == 0
     {
         return None;
     }
@@ -870,10 +909,15 @@ fn find_template_exact_gray(frame: &GrayFrame, template: &GrayFrame) -> Option<T
     let max_x = frame.width - template.width;
     let max_y = frame.height - template.height;
     let scan_width = max_x as usize + 1;
+    let mut scanned_positions = 0u64;
     for y in 0..=max_y {
         let row_start = ((y + anchor.y) * frame.width + anchor.x) as usize;
         let row = &frame.pixels[row_start..row_start + scan_width];
         'candidate: for (x_offset, value) in row.iter().enumerate() {
+            if scanned_positions >= max_positions {
+                return None;
+            }
+            scanned_positions += 1;
             if *value != anchor.value {
                 continue;
             }
@@ -990,70 +1034,16 @@ fn coarse_templates_for(template: &GrayFrame, factor: f64) -> Option<Vec<CoarseT
         return None;
     }
 
-    let step = (1.0 / factor).round() as u32;
-    if step <= 1 {
-        let coarse = template.resize_by(factor)?;
-        return if template.is_flat() || !coarse.is_flat() {
-            Some(vec![CoarseTemplate {
-                phase_x: 0,
-                phase_y: 0,
-                frame: coarse,
-            }])
-        } else {
-            None
-        };
-    }
-
-    let phase_limit = if template.is_flat() { 1 } else { step };
-    let mut templates = Vec::new();
-    for phase_y in 0..phase_limit {
-        for phase_x in 0..phase_limit {
-            let coarse = coarse_template_for_phase(template, factor, phase_x, phase_y)?;
-            if template.is_flat() || !coarse.is_flat() {
-                templates.push(CoarseTemplate {
-                    phase_x,
-                    phase_y,
-                    frame: coarse,
-                });
-            }
-        }
-    }
-    if templates.is_empty() {
-        None
+    let coarse = template.resize_area_by(factor)?;
+    if template.is_flat() || !coarse.is_flat() {
+        Some(vec![CoarseTemplate {
+            phase_x: 0,
+            phase_y: 0,
+            frame: coarse,
+        }])
     } else {
-        Some(templates)
+        None
     }
-}
-
-fn coarse_template_for_phase(
-    template: &GrayFrame,
-    factor: f64,
-    phase_x: u32,
-    phase_y: u32,
-) -> Option<GrayFrame> {
-    if factor <= 0.0 || template.width == 0 || template.height == 0 {
-        return None;
-    }
-    let step = (1.0 / factor).round().max(1.0) as u32;
-    let width = ((f64::from(template.width) * factor) as u32).max(1);
-    let height = ((f64::from(template.height) * factor) as u32).max(1);
-    let mut pixels = vec![0.0; width as usize * height as usize];
-    for y in 0..height {
-        for x in 0..width {
-            let src_x = phase_x
-                .saturating_add(x.saturating_mul(step))
-                .min(template.width - 1);
-            let src_y = phase_y
-                .saturating_add(y.saturating_mul(step))
-                .min(template.height - 1);
-            pixels[(y * width + x) as usize] = template.pixel(src_x, src_y);
-        }
-    }
-    Some(GrayFrame {
-        width,
-        height,
-        pixels,
-    })
 }
 
 fn candidate_locs(
@@ -1228,6 +1218,43 @@ impl GrayFrame {
         })
     }
 
+    fn resize_area_by(&self, scale: f64) -> Option<Self> {
+        if scale <= 0.0 || self.width == 0 || self.height == 0 {
+            return None;
+        }
+        if scale >= 1.0 {
+            return self.resize_by(scale);
+        }
+        let width = ((f64::from(self.width) * scale) as u32).max(1);
+        let height = ((f64::from(self.height) * scale) as u32).max(1);
+        let mut pixels = vec![0.0; width as usize * height as usize];
+        for y in 0..height {
+            let source_top = ((f64::from(y) / scale).floor() as u32).min(self.height - 1);
+            let source_bottom =
+                (((f64::from(y + 1) / scale).ceil() as u32).max(source_top + 1)).min(self.height);
+            for x in 0..width {
+                let source_left = ((f64::from(x) / scale).floor() as u32).min(self.width - 1);
+                let source_right = (((f64::from(x + 1) / scale).ceil() as u32)
+                    .max(source_left + 1))
+                .min(self.width);
+                let mut sum = 0.0;
+                let mut count = 0u32;
+                for source_y in source_top..source_bottom {
+                    for source_x in source_left..source_right {
+                        sum += self.pixel(source_x, source_y);
+                        count += 1;
+                    }
+                }
+                pixels[(y * width + x) as usize] = sum / count.max(1) as f32;
+            }
+        }
+        Some(Self {
+            width,
+            height,
+            pixels,
+        })
+    }
+
     fn mean_and_energy(&self) -> (f32, f32) {
         let count = self.pixels.len() as f32;
         if count == 0.0 {
@@ -1275,12 +1302,12 @@ impl GrayFrameCache {
         let full = GrayFrame::from_rgb(frame);
         let area = u64::from(full.width) * u64::from(full.height);
         let half = if area >= COARSE_AREA {
-            full.resize_by(0.5)
+            full.resize_area_by(0.5)
         } else {
             None
         };
         let quarter = if area >= QUARTER_AREA {
-            full.resize_by(0.25)
+            full.resize_area_by(0.25)
         } else {
             None
         };
@@ -1575,7 +1602,7 @@ mod tests {
         PreparedDetector, RgbFrame,
     };
     use crate::config::WatchConfig;
-    use std::{fs::File, path::Path};
+    use std::{fs::File, io::Cursor, path::Path};
 
     #[test]
     fn pixel_detection_matches_with_tolerance() {
@@ -1815,6 +1842,19 @@ mod tests {
         };
 
         assert!(super::coarse_plan(&frame, &template).is_none());
+    }
+
+    #[test]
+    fn exact_gray_search_skips_flat_templates_and_bounds_large_scans() {
+        let small_frame = gray_frame(400, 300, 0.0);
+        let large_frame = gray_frame(1280, 720, 0.0);
+        let textured = super::GrayFrame::from_rgb(&textured_template(12, 12));
+        let flat = gray_frame(12, 12, 90.0);
+
+        assert!(super::should_try_exact_gray(&small_frame, &textured));
+        assert!(super::should_try_exact_gray(&large_frame, &textured));
+        assert!(super::find_template_exact_gray_bounded(&large_frame, &textured, 1).is_none());
+        assert!(!super::should_try_exact_gray(&small_frame, &flat));
     }
 
     #[test]
@@ -2305,6 +2345,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn image_bytes_loader_accepts_clipboard_png_bytes() {
+        let expected = RgbFrame::new(
+            2,
+            1,
+            vec![
+                10, 20, 30, //
+                70, 80, 90,
+            ],
+        )
+        .unwrap();
+        let png = image_bytes(&expected, image::ImageFormat::Png);
+
+        let frame = RgbFrame::from_image_bytes("clipboard.png", &png).unwrap();
+
+        assert_eq!(frame, expected);
+    }
+
     fn paste(frame: &mut [u8], frame_width: u32, left: u32, top: u32, image: &RgbFrame) {
         for y in 0..image.height {
             for x in 0..image.width {
@@ -2351,6 +2409,14 @@ mod tests {
         .unwrap()
     }
 
+    fn gray_frame(width: u32, height: u32, value: f32) -> super::GrayFrame {
+        super::GrayFrame {
+            width,
+            height,
+            pixels: vec![value; width as usize * height as usize],
+        }
+    }
+
     fn write_png(path: &Path, image: &RgbFrame) {
         write_png_raw(
             path,
@@ -2365,6 +2431,16 @@ mod tests {
         let image =
             image::RgbImage::from_raw(image.width, image.height, image.pixels.clone()).unwrap();
         image.save_with_format(path, format).unwrap();
+    }
+
+    fn image_bytes(image: &RgbFrame, format: image::ImageFormat) -> Vec<u8> {
+        let image =
+            image::RgbImage::from_raw(image.width, image.height, image.pixels.clone()).unwrap();
+        let mut cursor = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(image)
+            .write_to(&mut cursor, format)
+            .unwrap();
+        cursor.into_inner()
     }
 
     fn write_png_raw(
