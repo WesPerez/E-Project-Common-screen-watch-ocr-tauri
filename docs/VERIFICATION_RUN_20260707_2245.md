@@ -18,6 +18,7 @@
 | `powershell -ExecutionPolicy Bypass -File scripts\tray-menu-smoke.ps1 -ExePath .\release-single\ScreenWatchOCRTauri.exe` | Passed. Verified Tauri-owned tray host class `tray_icon_app`, native menu commands `Show Tauri` and `Exit Tauri`, and exit code 0. |
 | `node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe` | Passed. Result: `docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-224646-result.json`. Covered legacy profile restore, source preview, template gallery, clipboard image/file paste, one-shot scan, OCR-lite rejection, monitoring restart, and layout splitters. |
 | `node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe --gate legacy-late-window` | Passed. Result: `docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-224804-result.json`. |
+| `node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe --gate monitoring-soak` | Passed with the default 60,000ms duration after the user allowed skipping the longer 600-second wait. Result: `docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-225749-result.json`. Observed 31 UI samples, tick delta `109`, hit delta `109`, progress-log delta `46`, and button restoration to `开始监控`. |
 | `cargo test -p screen-watch-core` | Passed earlier in this continuation with `125 passed, 3 ignored`; includes `exact_gray_template_detection_uses_rarest_anchor_and_checks_all_columns`. |
 | `npm run production:template:parity` | Passed earlier in this continuation. Old Python Detector matched 18/18 in 421ms; Rust matched the same 18/18 ids in 66ms. Result: `docs\manual-gate-evidence\logs\production-template-parity-smoke-20260707-221918-result.json`. |
 | `npm run production:template:smoke -- -SkipParity` | Passed earlier in this continuation. Rust matched 18/18 production templates in 103ms. |
@@ -28,11 +29,11 @@
 
 - The packaged smoke removed its smoke-owned temp app root and isolated `LOCALAPPDATA`.
 - The tray smoke removed its smoke-owned isolated app-data directory.
-- WebView visual smoke retained its `target\webview-visual-smoke\20260707-224646` and `20260707-224804` run directories plus evidence logs/screenshots for audit.
+- WebView visual smoke retained its `target\webview-visual-smoke\20260707-224646`, `20260707-224804`, and `20260707-225749` run directories plus evidence logs/screenshots for audit.
 - Earlier failed startup shortcut tests left two temp `screen-watch-ocr-tauri-startup-*` directories; those exact current-session directories were inspected and removed.
 - Existing ignored build/dependency/evidence directories (`dist/`, `target/`, `release-single/`, `node_modules/`, `docs/manual-gate-evidence/logs/`) are retained.
 
 ## Notes
 
 - The old Python `ScreenWatchOCR.exe` process visible during the final checks was not started or stopped by this run.
-- The previous `8986F116...` final exe remains useful historical evidence for the 600-second monitoring soak and coexistence smoke. The current `1D03E007...` final exe has fresh packaged, tray, full WebView, late-window, template parity, and verifier evidence.
+- The previous `8986F116...` final exe remains useful historical evidence for the 600-second monitoring soak and coexistence smoke. The current `1D03E007...` final exe has fresh packaged, tray, full WebView, late-window, 60-second monitoring soak, template parity, and verifier evidence.

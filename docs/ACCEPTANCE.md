@@ -24,7 +24,7 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
 
 ## Current Rust/Tauri Verification
 
-- Current status snapshot as of 2026-07-07 22:48 +08:00:
+- Current status snapshot as of 2026-07-07 23:03 +08:00:
   `docs\VERIFICATION_RUN_20260707_2245.md` and
   `docs\COMPARISON_AUDIT.md` are the current top-level evidence records. The
   manual evidence gate is `19 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete,
@@ -1658,8 +1658,8 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
 - Multi-monitor and DPI coverage beyond the current Windows desktop smoke
   matrix still needs spot checks on additional hardware/topologies.
 - Long-running production monitoring beyond the recorded packaged WebView
-  start/stop/restart smoke and 600-second soak is not yet a multi-hour or
-  multi-day endurance record.
+  start/stop/restart smoke, current 60-second soak, and historical 600-second soak
+  is not yet a multi-hour or multi-day endurance record.
 - Third-party protected, minimized, GPU-only, or capture-blocking windows can
   still fail due to Windows/window-class limitations even though generated
   helper windows, screen capture, direct-window capture, remembered-window
