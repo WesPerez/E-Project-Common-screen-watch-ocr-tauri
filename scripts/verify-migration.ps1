@@ -742,6 +742,11 @@ function Assert-TauriIdentitySeparationContract {
             'Python and Tauri process names must not match',
             'Python app accepted the Tauri single-instance command',
             'Tauri app accepted the Python single-instance command',
+            'Get-ProcessTreeRecords',
+            'WEBVIEW2_USER_DATA_FOLDER',
+            'Python packaged app process tree did not expose a visible Screen Watch OCR window',
+            'Tauri packaged app process tree did not expose a visible Screen Watch OCR Tauri window',
+            'Tauri WebView2 child process did not use the smoke-owned user data folder',
             'refusing to touch an existing app'
         )) {
         if (-not $coexistenceSmokeSource.Contains($required)) {

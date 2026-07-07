@@ -240,7 +240,8 @@ function Start-SmokeProcess {
         [string]$ExePath,
         [string]$Arguments,
         [string]$LocalAppData,
-        [string]$AppData
+        [string]$AppData,
+        [string]$WebView2UserDataFolder = ""
     )
 
     $psi = [Diagnostics.ProcessStartInfo]::new()
@@ -250,6 +251,9 @@ function Start-SmokeProcess {
     $psi.UseShellExecute = $false
     $psi.EnvironmentVariables["LOCALAPPDATA"] = $LocalAppData
     $psi.EnvironmentVariables["APPDATA"] = $AppData
+    if ($WebView2UserDataFolder) {
+        $psi.EnvironmentVariables["WEBVIEW2_USER_DATA_FOLDER"] = $WebView2UserDataFolder
+    }
     return [Diagnostics.Process]::Start($psi)
 }
 
@@ -294,17 +298,76 @@ function Get-ProcessRecord {
     }
 }
 
-function Get-VisibleWindowsForProcess {
+function Get-ProcessTreeRecords {
     param([Diagnostics.Process]$Process)
-    return @([ScreenWatchCoexistenceSmokeNative]::VisibleWindowsForPid([uint32]$Process.Id))
+
+    $Process.Refresh()
+    $all = @(
+        Get-CimInstance Win32_Process |
+            Select-Object ProcessId, ParentProcessId, Name, CommandLine
+    )
+    $ids = [Collections.Generic.HashSet[int]]::new()
+    [void]$ids.Add([int]$Process.Id)
+    $changed = $true
+    while ($changed) {
+        $changed = $false
+        foreach ($item in $all) {
+            if ($ids.Contains([int]$item.ParentProcessId) -and -not $ids.Contains([int]$item.ProcessId)) {
+                [void]$ids.Add([int]$item.ProcessId)
+                $changed = $true
+            }
+        }
+    }
+
+    return @(
+        $all |
+            Where-Object { $ids.Contains([int]$_.ProcessId) } |
+            Sort-Object ProcessId |
+            ForEach-Object {
+                [ordered]@{
+                    processId = [int]$_.ProcessId
+                    parentProcessId = [int]$_.ParentProcessId
+                    processName = $_.Name
+                    commandLine = $_.CommandLine
+                }
+            }
+    )
+}
+
+function Get-VisibleWindowsForProcessTree {
+    param([object[]]$ProcessTree)
+
+    $windows = @()
+    foreach ($processRecord in $ProcessTree) {
+        $windows += @(
+            [ScreenWatchCoexistenceSmokeNative]::VisibleWindowsForPid([uint32]$processRecord.processId) |
+                ForEach-Object {
+                    [ordered]@{
+                        processId = $processRecord.processId
+                        parentProcessId = $processRecord.parentProcessId
+                        processName = $processRecord.processName
+                        hwnd = $_.Hwnd
+                        class = $_.Class
+                        title = $_.Title
+                        left = $_.Left
+                        top = $_.Top
+                        right = $_.Right
+                        bottom = $_.Bottom
+                        width = $_.Width
+                        height = $_.Height
+                    }
+                }
+        )
+    }
+    return $windows
 }
 
 function Get-MainWindowCount {
     param(
-        [Diagnostics.Process]$Process,
+        [object[]]$Windows,
         [string]$Title
     )
-    return @((Get-VisibleWindowsForProcess $Process) | Where-Object { $_.Title -eq $Title }).Count
+    return @($Windows | Where-Object { $_.title -eq $Title }).Count
 }
 
 function Stop-OwnedProcess {
@@ -336,6 +399,7 @@ $smokeId = ([guid]::NewGuid().ToString("N")).Substring(0, 8)
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) "screen-watch-ocr-coexistence-smoke-$smokeId"
 $localAppData = Join-Path $tempRoot "localappdata"
 $appData = Join-Path $tempRoot "appdata"
+$tauriWebView2UserData = Join-Path $tempRoot "tauri-webview2-udf"
 $sharedDataDir = Join-Path $localAppData "ScreenWatchOCR"
 $pythonProcess = $null
 $tauriProcess = $null
@@ -353,6 +417,7 @@ $result = [ordered]@{
         tempRoot = $tempRoot
         localAppData = $localAppData
         appData = $appData
+        tauriWebView2UserData = $tauriWebView2UserData
         sharedDataDir = $sharedDataDir
     }
     ports = [ordered]@{
@@ -402,7 +467,7 @@ try {
         throw "Tauri default single-instance port $TauriPort is already busy; refusing to touch an existing app"
     }
 
-    New-Item -ItemType Directory -Force -Path $localAppData, $appData | Out-Null
+    New-Item -ItemType Directory -Force -Path $localAppData, $appData, $tauriWebView2UserData | Out-Null
 
     $pythonProcess = Start-SmokeProcess -ExePath $PythonExePath -Arguments "" -LocalAppData $localAppData -AppData $appData
     Wait-ForSmokeCondition "Python app binding port $PythonPort" { Test-TcpPortBusy $PythonPort } $StartupWaitSeconds
@@ -412,7 +477,12 @@ try {
         Send-InstanceCommand -Port $PythonPort -Command $PythonCommand
     } $StartupWaitSeconds
 
-    $tauriProcess = Start-SmokeProcess -ExePath $TauriExePath -Arguments "" -LocalAppData $localAppData -AppData $appData
+    $tauriProcess = Start-SmokeProcess `
+        -ExePath $TauriExePath `
+        -Arguments "" `
+        -LocalAppData $localAppData `
+        -AppData $appData `
+        -WebView2UserDataFolder $tauriWebView2UserData
     Wait-ForSmokeCondition "Tauri app binding port $TauriPort" { Test-TcpPortBusy $TauriPort } $StartupWaitSeconds
     Assert-ProcessRunning $tauriProcess "Tauri packaged app"
     Wait-ForSmokeCondition "Tauri app acknowledging its own single-instance command" {
@@ -422,6 +492,8 @@ try {
 
     $result.python.process = Get-ProcessRecord $pythonProcess
     $result.tauri.process = Get-ProcessRecord $tauriProcess
+    $result.python.processTree = @(Get-ProcessTreeRecords $pythonProcess)
+    $result.tauri.processTree = @(Get-ProcessTreeRecords $tauriProcess)
 
     if ($result.python.process.processName -eq $result.tauri.process.processName) {
         throw "Python and Tauri process names must not match"
@@ -447,19 +519,48 @@ try {
 
     $pythonSecondProcess = Start-SmokeProcess -ExePath $PythonExePath -Arguments "" -LocalAppData $localAppData -AppData $appData
     Wait-ForProcessExit $pythonSecondProcess "Python second instance" $StartupWaitSeconds
-    $tauriSecondProcess = Start-SmokeProcess -ExePath $TauriExePath -Arguments "" -LocalAppData $localAppData -AppData $appData
+    $tauriSecondProcess = Start-SmokeProcess `
+        -ExePath $TauriExePath `
+        -Arguments "" `
+        -LocalAppData $localAppData `
+        -AppData $appData `
+        -WebView2UserDataFolder $tauriWebView2UserData
     Wait-ForProcessExit $tauriSecondProcess "Tauri second instance" $StartupWaitSeconds
 
     Assert-ProcessRunning $pythonProcess "Python packaged app after Tauri second instance"
     Assert-ProcessRunning $tauriProcess "Tauri packaged app after Python second instance"
 
-    $pythonWindows = @(Get-VisibleWindowsForProcess $pythonProcess)
-    $tauriWindows = @(Get-VisibleWindowsForProcess $tauriProcess)
+    $result.python.processTree = @(Get-ProcessTreeRecords $pythonProcess)
+    $result.tauri.processTree = @(Get-ProcessTreeRecords $tauriProcess)
+    $pythonWindows = @(Get-VisibleWindowsForProcessTree $result.python.processTree)
+    $tauriWindows = @(Get-VisibleWindowsForProcessTree $result.tauri.processTree)
+    $webView2Tree = @(
+        $result.tauri.processTree |
+            Where-Object { $_.processName -ieq "msedgewebview2.exe" }
+    )
+    $webView2OutsideTemp = @(
+        $webView2Tree |
+            Where-Object { $_.commandLine -and $_.commandLine -notlike "*$tauriWebView2UserData*" }
+    )
+    if ($webView2Tree.Count -gt 0 -and $webView2OutsideTemp.Count -gt 0) {
+        throw "Tauri WebView2 child process did not use the smoke-owned user data folder"
+    }
     $result.windows = [ordered]@{
         pythonVisibleWindows = $pythonWindows
         tauriVisibleWindows = $tauriWindows
-        pythonMainWindowCount = @($pythonWindows | Where-Object { $_.Title -eq "Screen Watch OCR" }).Count
-        tauriMainWindowCount = @($tauriWindows | Where-Object { $_.Title -eq "Screen Watch OCR Tauri" }).Count
+        pythonMainWindowCount = Get-MainWindowCount $pythonWindows "Screen Watch OCR"
+        tauriMainWindowCount = Get-MainWindowCount $tauriWindows "Screen Watch OCR Tauri"
+    }
+    $result.webView2 = [ordered]@{
+        processCount = $webView2Tree.Count
+        userDataFolder = $tauriWebView2UserData
+        allChildrenUsedSmokeOwnedUserDataFolder = $webView2OutsideTemp.Count -eq 0
+    }
+    if ($result.windows.pythonMainWindowCount -lt 1) {
+        throw "Python packaged app process tree did not expose a visible Screen Watch OCR window"
+    }
+    if ($result.windows.tauriMainWindowCount -lt 1) {
+        throw "Tauri packaged app process tree did not expose a visible Screen Watch OCR Tauri window"
     }
     $result.protocol = [ordered]@{
         tauriCommandToPythonAccepted = $tauriCommandToPython
@@ -483,10 +584,13 @@ try {
     Write-Host "tauriSubsystem: $($result.tauri.subsystemName) ($tauriSubsystem)"
     Write-Host "sharedIsolatedLocalAppData: $localAppData"
     Write-Host "sharedIsolatedScreenWatchOCR: $sharedDataDir"
+    Write-Host "tauriWebView2UserData: $tauriWebView2UserData"
     Write-Host "pythonProcessId: $($pythonProcess.Id)"
     Write-Host "tauriProcessId: $($tauriProcess.Id)"
     Write-Host "pythonProcessName: $($result.python.process.processName)"
     Write-Host "tauriProcessName: $($result.tauri.process.processName)"
+    Write-Host "pythonProcessTreeCount: $($result.python.processTree.Count)"
+    Write-Host "tauriProcessTreeCount: $($result.tauri.processTree.Count)"
     Write-Host "pythonDefaultPortBusy: $(Test-TcpPortBusy $PythonPort)"
     Write-Host "tauriDefaultPortBusy: $(Test-TcpPortBusy $TauriPort)"
     Write-Host "tauriCommandToPythonAccepted: $tauriCommandToPython"
@@ -495,6 +599,8 @@ try {
     Write-Host "tauriOwnCommandAccepted: $tauriOwnCommandAccepted"
     Write-Host "pythonMainWindowCount: $($result.windows.pythonMainWindowCount)"
     Write-Host "tauriMainWindowCount: $($result.windows.tauriMainWindowCount)"
+    Write-Host "tauriWebView2ProcessCount: $($result.webView2.processCount)"
+    Write-Host "tauriWebView2UsesSmokeOwnedUserData: $($result.webView2.allChildrenUsedSmokeOwnedUserDataFolder)"
     Write-Host "pythonSecondInstanceExitCode: $($pythonSecondProcess.ExitCode)"
     Write-Host "tauriSecondInstanceExitCode: $($tauriSecondProcess.ExitCode)"
     Write-Host "coexistenceSmokeVerified: True"
