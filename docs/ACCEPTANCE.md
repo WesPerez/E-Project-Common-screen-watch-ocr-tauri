@@ -1214,6 +1214,16 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   passed, 3 ignored`, Tauri shell/backend `91 passed, 16 ignored`, OCR feature
   `28 passed`, and the same final single-file deliverable hash
   `B7356D3A96810AA70FEF42EE1FB360516411D145B1E8630F6A49F840C1EFE3A4`.
+- After locking the app-window self-filter:
+  `cargo test -p screen-watch-ocr-tauri window_sources` passed with the new
+  test `app_window_filter_excludes_legacy_and_tauri_app_titles`, proving the
+  selectable app-window list excludes empty titles, `ScreenWatchOCR`,
+  `Screen Watch OCR`, `Screen Watch OCR Tauri`, and `Program Manager`. The
+  focused verifier
+  `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1
+  -SkipPython -SkipFrontend -SkipRelease` then passed with Tauri shell/backend
+  `92 passed, 16 ignored` and a static identity contract requiring the Win32
+  window enumeration path to keep the current-process PID filter.
 - Current optional `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1
   -SkipPython -SkipFrontend -SkipRelease -IncludeTemplateBenchmark
   -IncludePackagedSmoke -IncludePortablePackage -IncludeFullPortablePackage`

@@ -677,6 +677,7 @@ function Assert-TauriIdentitySeparationContract {
     $singleInstanceSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\single_instance.rs") -Raw
     $startupSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\startup.rs") -Raw
     $traySource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\tray.rs") -Raw
+    $windowSourcesSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\window_sources.rs") -Raw
     $packagedSmokeSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "scripts\packaged-smoke.ps1") -Raw
     $coexistenceSmokeSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "scripts\coexistence-smoke.ps1") -Raw
     $webviewSmokeSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "scripts\webview-visual-smoke.mjs") -Raw
@@ -734,6 +735,19 @@ function Assert-TauriIdentitySeparationContract {
     }
     if ($startupSource.Contains('pub const STARTUP_LINK_NAME: &str = "屏幕监控OCR.lnk";')) {
         throw "Tauri startup shortcut must not use the legacy Python link name"
+    }
+
+    foreach ($required in @(
+            '"ScreenWatchOCR"',
+            '"Screen Watch OCR"',
+            '"Screen Watch OCR Tauri"',
+            'GetCurrentProcessId',
+            'if pid == unsafe { GetCurrentProcessId() }',
+            'is_ignored_app_title(&title)'
+        )) {
+        if (-not $windowSourcesSource.Contains($required)) {
+            throw "Tauri app-window list self-filter contract is missing '$required'"
+        }
     }
 
     foreach ($required in @(

@@ -204,7 +204,7 @@ mod windows_impl {
             return None;
         }
         let title = unsafe { window_title(hwnd) }?;
-        if title.is_empty() || APP_TITLES.contains(&title.as_str()) {
+        if is_ignored_app_title(&title) {
             return None;
         }
         let class_name = unsafe { window_class(hwnd) };
@@ -254,6 +254,10 @@ mod windows_impl {
         String::from_utf16_lossy(&buffer[..copied as usize])
     }
 
+    fn is_ignored_app_title(title: &str) -> bool {
+        title.is_empty() || APP_TITLES.contains(&title)
+    }
+
     unsafe fn is_cloaked(hwnd: HWND) -> bool {
         let mut cloaked = 0i32;
         unsafe {
@@ -266,6 +270,21 @@ mod windows_impl {
         }
         .is_ok()
             && cloaked != 0
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::is_ignored_app_title;
+
+        #[test]
+        fn app_window_filter_excludes_legacy_and_tauri_app_titles() {
+            assert!(is_ignored_app_title(""));
+            assert!(is_ignored_app_title("ScreenWatchOCR"));
+            assert!(is_ignored_app_title("Screen Watch OCR"));
+            assert!(is_ignored_app_title("Screen Watch OCR Tauri"));
+            assert!(is_ignored_app_title("Program Manager"));
+            assert!(!is_ignored_app_title("User Dashboard"));
+        }
     }
 }
 
