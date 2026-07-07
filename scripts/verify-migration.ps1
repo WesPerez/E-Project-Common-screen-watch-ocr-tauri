@@ -982,12 +982,12 @@ function Assert-AcceptanceCurrentStatusContract {
 
     foreach ($expected in @(
             "Current status snapshot as of",
-            "docs\VERIFICATION_RUN_20260707_1654.md",
+            "docs\VERIFICATION_RUN_20260707_1903.md",
             "docs\COMPARISON_AUDIT.md",
             "19 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete,",
             "release-single\ScreenWatchOCRTauri.exe",
             "3,587,584 bytes",
-            "200C0C8E8EFB8AF4A2DD56A37C9762C2582C45DB441555E669A114AF5D1737B2",
+            "98F47746B032B9F5326083AB2C4BF6BB8F1567583F5FCC71757F56E121A0C7C0",
             "Windows GUI subsystem",
             "## Remaining Validation Boundaries",
             "600-second soak",
@@ -2574,7 +2574,7 @@ function Assert-SingleFileDeliverableContract {
     Assert-TextContains `
         "comparison audit current full verifier summary" `
         $audit `
-        "Current rerun passed Python 98, Rust core 121 / 3 ignored, Tauri 88 / 16 ignored, OCR feature 25 / 2 ignored, frontend 103"
+        "Earlier full verifier evidence passed Python 98, Rust core 121 / 3 ignored, Tauri 88 / 16 ignored, OCR feature 25 / 2 ignored, frontend 103"
     Assert-TextContains `
         "comparison audit manual evidence status" `
         $audit `
