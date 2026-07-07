@@ -115,6 +115,8 @@ pub struct ProfileWatchConfigOptions {
     #[serde(default)]
     pub regions: Vec<RegionConfig>,
     #[serde(default)]
+    pub profile_region: Option<RegionConfig>,
+    #[serde(default)]
     pub windows: Vec<WindowConfig>,
     #[serde(default)]
     pub window_apps: Vec<WindowAppConfig>,
@@ -148,6 +150,7 @@ impl Default for ProfileWatchConfigOptions {
     fn default() -> Self {
         Self {
             regions: Vec::new(),
+            profile_region: None,
             windows: Vec::new(),
             window_apps: Vec::new(),
             threshold: default_profile_threshold(),
@@ -529,7 +532,11 @@ pub fn save_profile_sources_at(
                 .collect(),
         ),
     );
-    if let Some(region) = options.regions.first() {
+    if let Some(region) = options
+        .profile_region
+        .as_ref()
+        .or_else(|| options.regions.first())
+    {
         object.insert("region".to_string(), Value::Object(profile_region(region)));
     }
     object.insert(
@@ -1756,6 +1763,15 @@ mod tests {
         let mut extra = Map::new();
         extra.insert("ordinal".to_string(), json!(3));
         let options = ProfileWatchConfigOptions {
+            profile_region: Some(RegionConfig {
+                name: String::new(),
+                monitor: 1,
+                left: 12,
+                top: 13,
+                width: Some(111),
+                height: None,
+                extra: Map::new(),
+            }),
             windows: vec![WindowConfig {
                 name: "app-Demo".to_string(),
                 title: "Demo".to_string(),
@@ -1770,7 +1786,10 @@ mod tests {
 
         let stored: Value = serde_json::from_str(&fs::read_to_string(&profile).unwrap()).unwrap();
         assert_eq!(stored["monitors"], json!([]));
-        assert_eq!(stored["region"], json!({"left": 9, "top": 8}));
+        assert_eq!(
+            stored["region"],
+            json!({"left": 12, "top": 13, "width": 111})
+        );
         assert_eq!(stored["windows"], json!([{"title": "Demo", "ordinal": 3}]));
     }
 
@@ -1822,6 +1841,7 @@ mod tests {
     fn profile_options_deserialize_frontend_camel_case_and_window_ordinals() {
         let options: ProfileWatchConfigOptions = serde_json::from_value(json!({
             "regions": [],
+            "profileRegion": {"left": 14, "top": 15, "width": 320},
             "windows": [
                 {
                     "name": "Demo #4",
@@ -1845,6 +1865,18 @@ mod tests {
         .unwrap();
 
         assert_eq!(options.windows.len(), 1);
+        assert_eq!(
+            options.profile_region,
+            Some(RegionConfig {
+                name: String::new(),
+                monitor: 1,
+                left: 14,
+                top: 15,
+                width: Some(320),
+                height: None,
+                extra: Map::new(),
+            })
+        );
         assert_eq!(options.windows[0].title, "Demo");
         assert_eq!(options.windows[0].hwnd, Some(123));
         assert_eq!(options.windows[0].extra["ordinal"], json!(4));

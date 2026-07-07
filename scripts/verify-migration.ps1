@@ -4,7 +4,7 @@ param(
     [int]$MinimumRustCoreTests = 120,
     [int]$MinimumTauriTests = 82,
     [int]$MinimumOcrFeatureTests = 23,
-    [int]$MinimumFrontendTests = 89,
+    [int]$MinimumFrontendTests = 102,
     [long]$MaxTauriLiteExeBytes = 15728640,
     [double]$MaxTauriToPythonExeRatio = 0.25,
     [switch]$SkipPython,
@@ -169,6 +169,23 @@ function Get-BuildInfoPath {
 function Get-ExeSha256 {
     param([string]$ExePath)
     return (Get-FileHash -Algorithm SHA256 -LiteralPath $ExePath).Hash.ToLowerInvariant()
+}
+
+function Get-PeSubsystem {
+    param([string]$ExePath)
+
+    $bytes = [IO.File]::ReadAllBytes($ExePath)
+    if ($bytes.Length -lt 0x100) {
+        throw "PE file is too small to inspect: $ExePath"
+    }
+
+    $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+    $optionalHeaderOffset = $peOffset + 24
+    if ($optionalHeaderOffset + 0x46 -gt $bytes.Length) {
+        throw "PE optional header is truncated: $ExePath"
+    }
+
+    return [BitConverter]::ToUInt16($bytes, $optionalHeaderOffset + 0x44)
 }
 
 function Write-ReleaseBuildInfo {
@@ -1522,7 +1539,7 @@ function Assert-LegacyVisibleWorkflowContract {
             Name = "region and match settings"
             Legacy = @("def region_for", "def detector_config", "self.threshold", "self.interval_ms")
             HtmlIds = @("profile-region-left", "profile-region-top", "profile-region-width", "profile-region-height", "profile-threshold", "profile-scales", "profile-interval-ms", "profile-cooldown", "profile-beep", "profile-beep-seconds", "profile-beep-volume", "profile-max-templates", "profile-max-alerts")
-            Frontend = @("buildProfileOptions", "profileRegionInputs", "persistProfileSources", 'querySelector("#profile-threshold")', "legacyMaxAlerts = options.maxAlerts ?? legacyMaxAlerts")
+            Frontend = @("buildProfileOptions", "profileRegionInputs", "profileRegion", "persistProfileSources", 'querySelector("#profile-threshold")', "legacyMaxAlerts = options.maxAlerts ?? legacyMaxAlerts")
             Commands = @("save_profile_sources", "build_profile_watch_config")
         },
         @{
@@ -1718,6 +1735,29 @@ function Assert-TrayMonitoringStatusContract {
     }
 }
 
+function Assert-SingleFileDeliverableContract {
+    param([string]$ProjectRootPath)
+
+    $deliverablePath = Join-Path $ProjectRootPath "release-single\ScreenWatchOCRTauri.exe"
+    if (-not (Test-Path -LiteralPath $deliverablePath)) {
+        return "not present"
+    }
+
+    $exeItem = Get-Item -LiteralPath $deliverablePath
+    $sha256 = (Get-ExeSha256 $exeItem.FullName).ToUpperInvariant()
+    $subsystem = Get-PeSubsystem $exeItem.FullName
+    if ($subsystem -ne 2) {
+        throw "single-file deliverable must be a Windows GUI executable, found PE subsystem $subsystem"
+    }
+
+    $auditPath = Join-Path $ProjectRootPath "docs\COMPARISON_AUDIT.md"
+    $audit = Get-Content -LiteralPath $auditPath -Raw
+    Assert-TextContains "comparison audit current deliverable size" $audit "- Size: $($exeItem.Length) bytes"
+    Assert-TextContains "comparison audit current deliverable hash" $audit "- SHA-256: ``$sha256``"
+
+    return "$($exeItem.Length) bytes, $sha256, WindowsGui"
+}
+
 function Get-CargoLibTestCounts {
     param(
         [string]$Output,
@@ -1795,6 +1835,7 @@ $summary = [ordered]@{
     backendCommandContract = $null
     monitorSessionEventContract = $null
     trayMonitoringStatusContract = $null
+    singleFileDeliverableContract = $null
     releaseBuildInfo = $null
     ocrFeatureBoundary = $null
     ocrDependencyTree = $null
@@ -2145,6 +2186,13 @@ Invoke-CapturedStep `
     -Script { Assert-TrayMonitoringStatusContract $ProjectRootPath } `
     -SuppressOutput | Out-Null
 $summary.trayMonitoringStatusContract = "passed"
+
+$singleFileDeliverableContract = Invoke-CapturedStep `
+    -Name "Single-file deliverable contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-SingleFileDeliverableContract $ProjectRootPath } `
+    -SuppressOutput
+$summary.singleFileDeliverableContract = $singleFileDeliverableContract.Trim()
 
 $rustWorkspaceOutput = Invoke-CapturedStep `
     -Name "Rust workspace tests" `

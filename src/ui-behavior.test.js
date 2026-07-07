@@ -692,6 +692,12 @@ test("profile source options preserve Python-compatible concrete window shape", 
     },
   ]);
   assert.deepEqual(buildProfileSourceOptions(state), {
+    profileRegion: {
+      height: 240,
+      left: 5,
+      top: 6,
+      width: 320,
+    },
     regions: [
       {
         height: 240,
@@ -717,6 +723,7 @@ test("profile source options preserve Python-compatible concrete window shape", 
 
 test("profile source options can persist remembered app windows instead of hwnds", () => {
   const state = {
+    region: { left: 11, top: 12, width: 320 },
     rememberedWindows: true,
     selectedWindowHandles: new Set(["44"]),
     windows: [
@@ -736,6 +743,11 @@ test("profile source options can persist remembered app windows instead of hwnds
     },
   ]);
   assert.deepEqual(buildProfileSourceOptions(state), {
+    profileRegion: {
+      left: 11,
+      top: 12,
+      width: 320,
+    },
     regions: [],
     windowApps: [
       {
@@ -749,6 +761,7 @@ test("profile source options can persist remembered app windows instead of hwnds
 
 test("profile source options preserve remembered apps that are not currently listed", () => {
   const state = {
+    region: { height: 180, left: -3, top: 8 },
     rememberedWindows: true,
     rememberedWindowApps: [
       {
@@ -782,6 +795,11 @@ test("profile source options preserve remembered apps that are not currently lis
     },
   ]);
   assert.deepEqual(buildProfileSourceOptions(state), {
+    profileRegion: {
+      height: 180,
+      left: -3,
+      top: 8,
+    },
     regions: [],
     windowApps: [
       {
@@ -795,6 +813,53 @@ test("profile source options preserve remembered apps that are not currently lis
     ],
     windows: [],
   });
+});
+
+test("profile source options keep region inputs even without selected monitors", () => {
+  assert.deepEqual(
+    buildProfileSourceOptions({
+      monitors: [
+        {
+          height: 1080,
+          index: 1,
+          isVirtual: false,
+          left: 0,
+          top: 0,
+          width: 1920,
+        },
+      ],
+      region: { height: 200, left: 15, top: 20, width: 300 },
+      selectedMonitorIndexes: new Set(),
+      selectedWindowHandles: new Set(["77"]),
+      windows: [
+        {
+          display: "Window",
+          hwnd: 77,
+          ordinal: 1,
+          title: "Window",
+        },
+      ],
+    }),
+    {
+      profileRegion: {
+        height: 200,
+        left: 15,
+        top: 20,
+        width: 300,
+      },
+      regions: [],
+      windowApps: [],
+      windows: [
+        {
+          display: "Window",
+          hwnd: 77,
+          name: "Window",
+          ordinal: 1,
+          title: "Window",
+        },
+      ],
+    },
+  );
 });
 
 test("profile source option presence accepts any source family", () => {

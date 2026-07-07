@@ -461,6 +461,7 @@ export function buildRememberedWindowAppConfigs(state = {}) {
 export function buildProfileSourceOptions(state = {}) {
   const rememberedWindows = Boolean(state.rememberedWindows);
   return {
+    profileRegion: normalizedRegion(state.region),
     regions: buildSelectedRegionConfigs(state),
     windows: rememberedWindows ? [] : buildSelectedWindowConfigs(state),
     windowApps: rememberedWindows ? buildRememberedWindowAppConfigs(state) : [],
