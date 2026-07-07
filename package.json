@@ -16,6 +16,7 @@
     "ocr:text:parity": "powershell -ExecutionPolicy Bypass -File scripts/ocr-text-parity-smoke.ps1",
     "template:benchmark": "powershell -ExecutionPolicy Bypass -File scripts/template-benchmark.ps1",
     "template:parity": "powershell -ExecutionPolicy Bypass -File scripts/template-parity-benchmark.ps1",
+    "production:template:parity": "powershell -ExecutionPolicy Bypass -File scripts/production-template-parity-smoke.ps1",
     "production:template:smoke": "powershell -ExecutionPolicy Bypass -File scripts/production-template-performance-smoke.ps1",
     "packaged:smoke": "powershell -ExecutionPolicy Bypass -File scripts/packaged-smoke.ps1",
     "tray:smoke": "powershell -ExecutionPolicy Bypass -File scripts/tray-menu-smoke.ps1",

@@ -584,6 +584,7 @@ function Assert-PackageScriptContract {
         "ocr:text:parity" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-text-parity-smoke.ps1"
         "template:benchmark" = "powershell -ExecutionPolicy Bypass -File scripts/template-benchmark.ps1"
         "template:parity" = "powershell -ExecutionPolicy Bypass -File scripts/template-parity-benchmark.ps1"
+        "production:template:parity" = "powershell -ExecutionPolicy Bypass -File scripts/production-template-parity-smoke.ps1"
         "production:template:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/production-template-performance-smoke.ps1"
         "packaged:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/packaged-smoke.ps1"
         "tray:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/tray-menu-smoke.ps1"
@@ -628,6 +629,7 @@ function Assert-PackageScriptContract {
             "scripts\ocr-text-parity-smoke.ps1",
             "scripts\template-benchmark.ps1",
             "scripts\template-parity-benchmark.ps1",
+            "scripts\production-template-parity-smoke.ps1",
             "scripts\production-template-performance-smoke.ps1",
             "scripts\packaged-smoke.ps1",
             "scripts\tray-menu-smoke.ps1",
@@ -1080,6 +1082,7 @@ function Assert-ManualGateRunbookContract {
             'powershell -ExecutionPolicy Bypass -File scripts\packaged-smoke.ps1 -ExePath target\release\screen-watch-ocr-tauri.exe -StartupWaitSeconds 18',
             'npm run template:parity',
             'powershell -ExecutionPolicy Bypass -File scripts\template-benchmark.ps1',
+            'npm run production:template:parity',
             'npm run production:template:smoke'
         )) {
         Assert-TextContains "manual gate runbook command" $runbookSource $command

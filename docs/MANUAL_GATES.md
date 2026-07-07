@@ -651,6 +651,13 @@ template detector timings separately:
 powershell -ExecutionPolicy Bypass -File scripts\template-benchmark.ps1
 ```
 
+Run the current production profile/template Python-vs-Rust same-frame parity
+gate:
+
+```powershell
+npm run production:template:parity
+```
+
 Then run a representative production template set from the shared compatible
 profile/data directory:
 
@@ -661,6 +668,9 @@ npm run production:template:smoke
 Expected evidence:
 
 - Fixed parity output records Python/OpenCV and Rust timings.
+- Production same-frame parity records the old Python detector hit IDs, Rust hit
+  IDs, Rust extras, and fails if Rust misses any Python hit or expected placed
+  template.
 - Production dataset description, frame resolution, target count, scale range,
   match counts, placements, and elapsed time are recorded.
 - Any Rust-vs-Python slowdown is documented before declaring completion.
