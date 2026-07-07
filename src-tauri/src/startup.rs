@@ -323,11 +323,15 @@ impl PathOrStr for String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ps_quote, startup_arguments_for_target, startup_link_path_from_appdata,
-        startup_working_dir_for_target, unsupported_status, ShortcutInfo, StartupManager,
-        STARTUP_LINK_NAME, START_MINIMIZED_ARG,
+        ps_quote, read_shortcut_info, same_path, startup_arguments_for_target,
+        startup_link_path_from_appdata, startup_working_dir_for_target, unsupported_status,
+        ShortcutInfo, StartupManager, STARTUP_LINK_NAME, START_MINIMIZED_ARG,
     };
-    use std::path::{Path, PathBuf};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn startup_link_path_uses_tauri_startup_folder_and_name() {
@@ -417,5 +421,39 @@ mod tests {
         assert!(!status.supported);
         assert!(!status.enabled);
         assert_eq!(status.arguments, START_MINIMIZED_ARG);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn startup_manager_writes_reads_and_removes_isolated_shortcut() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("screen-watch-ocr-tauri-startup-{stamp}"));
+        let startup_dir = root.join("Microsoft/Windows/Start Menu/Programs/Startup");
+        let link_path = startup_dir.join(STARTUP_LINK_NAME);
+        let target_path = std::env::current_exe().unwrap();
+        let manager = StartupManager::new(link_path.clone(), target_path.clone(), true, None);
+
+        let initial = manager.status().unwrap();
+        assert!(initial.supported);
+        assert!(!initial.enabled);
+        assert_eq!(initial.arguments, START_MINIMIZED_ARG);
+        assert_eq!(PathBuf::from(&initial.link_path), link_path);
+
+        let enabled = manager.set_enabled(true).unwrap();
+        assert!(enabled.enabled);
+        assert!(link_path.exists());
+        let info = read_shortcut_info(&link_path).unwrap().unwrap();
+        assert!(same_path(&info.target, &target_path));
+        assert_eq!(info.arguments, START_MINIMIZED_ARG);
+        assert_eq!(info.working_dir, target_path.parent().unwrap());
+
+        let disabled = manager.set_enabled(false).unwrap();
+        assert!(!disabled.enabled);
+        assert!(!link_path.exists());
+
+        let _ = fs::remove_dir_all(root);
     }
 }

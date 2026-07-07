@@ -281,7 +281,9 @@ Implemented and verified:
   `屏幕监控OCR Tauri.lnk`,
   writes packaged startup arguments as `--start-minimized`, avoids deleting
   foreign startup shortcuts, and exposes explicit startup status/toggle commands
-  plus frontend controls.
+  plus frontend controls. The backend now has an isolated Windows-only real
+  shortcut smoke test that creates, reads, and removes a temp `.lnk` through
+  `WScript.Shell` without touching the user's actual Startup folder.
 - Tauri-specific single-instance wake protocol on `127.0.0.1:47628` using
   `ScreenWatchOCRTauri:show\n` and `ok\n`, with second-instance exit behavior
   and main-window show/unminimize/focus handling in Tauri. This intentionally
