@@ -1,12 +1,12 @@
 Gate: WebView Layout Resize Smoke
 Completion status: pass
-Date/time: 2026-07-07T00:22:51.757Z
+Date/time: 2026-07-07T00:30:03.364Z
 Machine: DESKTOP-9FRQ8VV
 Worktree note: Tauri repo present; smoke used isolated LOCALAPPDATA and did not modify the Python baseline
-Command(s) and exit code(s): node scripts/webview-visual-smoke.mjs --gate layout; exit 0
+Command(s) and exit code(s): node scripts/webview-visual-smoke.mjs --gate all; exit 0
 Release build-info hash: executableSha256=5f24f3e399ce42b85206de15274ab3e027aae62c2dac3b48accd872c4d35aebc; buildInfo=target\release\screen-watch-ocr-tauri.build-info.json
-Model/image/evidence dirs: inputDir=E:\Project\Common\screen-watch-ocr-tauri\target\webview-visual-smoke\20260707-082244\inputs; localAppData=E:\Project\Common\screen-watch-ocr-tauri\target\webview-visual-smoke\20260707-082244\localappdata; evidenceLogDir=E:\Project\Common\screen-watch-ocr-tauri\docs\manual-gate-evidence\logs
+Model/image/evidence dirs: inputDir=E:\Project\Common\screen-watch-ocr-tauri\target\webview-visual-smoke\20260707-082916\inputs; localAppData=E:\Project\Common\screen-watch-ocr-tauri\target\webview-visual-smoke\20260707-082916\localappdata; evidenceLogDir=E:\Project\Common\screen-watch-ocr-tauri\docs\manual-gate-evidence\logs
 Observed result: automated real WebView2/CDP smoke dragged the target/settings splitter, settings/preview splitter, target-list/log splitter, and a control-panel group splitter; each drag produced measured dimension changes without horizontal overflow
-Evidence files: docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-082244-result.json; docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-082244-app.log; docs\manual-gate-evidence\logs\webview-layout-resized-20260707-082244.png
+Evidence files: docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-082916-result.json; docs\manual-gate-evidence\logs\webview-visual-smoke-20260707-082916-app.log; docs\manual-gate-evidence\logs\webview-layout-resized-20260707-082916.png
 Cleanup performed: stopped the test-owned app process and helper window process; retained isolated target/webview-visual-smoke run directory and evidence screenshots/logs for audit
 Remaining risk: proves the current packaged WebView2 layout resize path on this desktop viewport; it does not exhaustively cover every DPI scale or very narrow mobile layout
