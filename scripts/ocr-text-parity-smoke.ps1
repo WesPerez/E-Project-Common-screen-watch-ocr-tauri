@@ -186,7 +186,7 @@ $result = [pscustomobject][ordered]@{
     notes = @(
         "This smoke compares OCR text matching semantics using supplied OCR rows, not real OCR model recognition quality.",
         "It verifies Python baseline contains/min_score/case_sensitive/box behavior and Rust detector/ScanEngine OCR-row behavior.",
-        "Chinese model recognition quality remains covered only as a remaining risk until real Chinese OCR model assets and images are tested."
+        "Real Chinese OCR recognition is covered by the separate real-model OCR smoke when external Chinese PP-OCRv5 assets and a Chinese PNG are supplied."
     )
 }
 

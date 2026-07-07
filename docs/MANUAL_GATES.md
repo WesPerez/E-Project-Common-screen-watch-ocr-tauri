@@ -121,6 +121,13 @@ Probe plus recognition command:
 powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1 -SkipRelease -IncludeOcrSmoke -OcrModelDir "D:\Models\rapidocr" -OcrSmokeImage ".\smoke.png" -OcrSmokeExpect "READY"
 ```
 
+Example direct model-recognition commands used for current evidence:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\ocr-smoke.ps1 -ModelDir target\ocr-model-smoke\monkt-ppocrv5-english -Image target\ocr-model-smoke\ready-smoke.png -Expect READY
+powershell -ExecutionPolicy Bypass -File scripts\ocr-smoke.ps1 -ModelDir target\ocr-model-smoke\monkt-ppocrv5-chinese -Image target\ocr-model-smoke\zh-ready-smoke.png -Expect 准备
+```
+
 Python-vs-Rust OCR text matching parity command:
 
 ```powershell

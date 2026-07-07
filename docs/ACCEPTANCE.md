@@ -1061,14 +1061,16 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   `scripts\verify-migration.ps1 -IncludeOcrSmoke`; one verifies native backend
   initialization from external assets and the second verifies recognized text
   from a caller-supplied PNG smoke image.
-- After supplying an external English PP-OCRv5 ONNX model set for real OCR
-  smoke:
+- After supplying external English and Chinese PP-OCRv5 ONNX model sets for
+  real OCR smoke:
   `powershell -ExecutionPolicy Bypass -File scripts\ocr-smoke.ps1 -ModelDir target\ocr-model-smoke\monkt-ppocrv5-english -Image target\ocr-model-smoke\ready-smoke.png -Expect READY`
-  passed. The external model directory contains `det.onnx`, `rec.onnx`, and
-  `ppocrv5_dict.txt`; the generated `READY` PNG recognition gate passed. The
-  model files are retained under `target\ocr-model-smoke` as external smoke
-  evidence and are not bundled into lite/full builds or copied into the shared
-  `ScreenWatchOCR` data directory.
+  passed, and
+  `powershell -ExecutionPolicy Bypass -File scripts\ocr-smoke.ps1 -ModelDir target\ocr-model-smoke\monkt-ppocrv5-chinese -Image target\ocr-model-smoke\zh-ready-smoke.png -Expect 准备`
+  passed. Each external model directory contains `det.onnx`, `rec.onnx`, and
+  `ppocrv5_dict.txt`; the generated `READY` PNG and `准备好了` PNG recognition
+  gates passed. The model files are retained under `target\ocr-model-smoke` as
+  external smoke evidence and are not bundled into lite/full builds or copied
+  into the shared `ScreenWatchOCR` data directory.
 - After adding OCR smoke model-asset preflight:
   `powershell -ExecutionPolicy Bypass -File scripts\ocr-smoke.ps1` fails fast
   before Cargo when required external assets are missing, reporting
@@ -1597,6 +1599,6 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
 - OpenCV/Python performance comparison against representative production
   template sets; the fixed synthetic parity script exists and currently records
   Python/OpenCV ahead of pure Rust on that workload.
-- Broader OCR quality coverage beyond the English PP-OCRv5 `READY` smoke:
-  Chinese recognition, PP-OCRv6/RapidOCR-native profile compatibility, and
+- Broader OCR quality coverage beyond the English PP-OCRv5 `READY` and Chinese
+  PP-OCRv5 `准备` smokes: PP-OCRv6/RapidOCR-native profile compatibility and
   production image accuracy remain future validation items.
