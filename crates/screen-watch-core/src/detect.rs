@@ -7,14 +7,17 @@ use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
     thread,
+    time::Instant,
 };
 use thiserror::Error;
 
 const COARSE_AREA: u64 = 1280 * 720;
-const QUARTER_AREA: u64 = 3840 * 2160;
+const QUARTER_AREA: u64 = 1920 * 1080;
 const COARSE_CANDIDATES: usize = 3;
+const LARGE_TEXTURED_COARSE_CANDIDATES: usize = 3;
 const TEXTURED_COARSE_CANDIDATES: usize = 8;
 const COARSE_CANDIDATE_POOL_MULTIPLIER: usize = 8;
+const LARGE_COARSE_TEMPLATE_AREA: u64 = 1024;
 const REFINE_MARGIN: u32 = 16;
 const EXACT_GRAY_MAX_POSITIONS: u64 = 250_000;
 const PERFECT_SCORE_THRESHOLD: f32 = 1.0 - 1e-6;
@@ -179,8 +182,8 @@ fn sample_positions(size: u32) -> Vec<u32> {
     if size == 0 {
         return Vec::new();
     }
-    let mut out = Vec::with_capacity(3);
-    for value in [0, size / 2, size - 1] {
+    let mut out = Vec::with_capacity(5);
+    for value in [0, size / 4, size / 2, (size * 3) / 4, size - 1] {
         if !out.contains(&value) {
             out.push(value);
         }
@@ -768,7 +771,20 @@ fn detect_prepared_template(
     else {
         return None;
     };
-    let hit = find_template_scaled_with_cache(frame_cache, template, scales)?;
+    let trace = std::env::var_os("SCREENWATCH_TEMPLATE_TRACE").is_some();
+    let started = trace.then(Instant::now);
+    let hit = find_template_scaled_with_cache(frame_cache, template, scales);
+    if let Some(started) = started {
+        let score = hit.as_ref().map(|item| item.score).unwrap_or(-1.0);
+        eprintln!(
+            "templateTrace target={} id={} elapsedMs={} score={:.4}",
+            name,
+            id.as_deref().unwrap_or(name),
+            started.elapsed().as_millis(),
+            score
+        );
+    }
+    let hit = hit?;
     if hit.score < *threshold {
         return None;
     }
@@ -840,8 +856,12 @@ fn find_template_best_gray_adaptive(
         {
             continue;
         }
+        let coarse_template_area =
+            u64::from(coarse_template.frame.width) * u64::from(coarse_template.frame.height);
         let candidate_limit = if coarse_template.frame.is_flat() {
             COARSE_CANDIDATES
+        } else if coarse_template_area >= LARGE_COARSE_TEMPLATE_AREA {
+            LARGE_TEXTURED_COARSE_CANDIDATES
         } else {
             TEXTURED_COARSE_CANDIDATES
         };
@@ -1068,10 +1088,11 @@ fn candidate_locs(
     } else {
         SparseTemplateSamples::from_template(template)
     };
-    let template_stats = sparse_samples
-        .is_none()
-        .then(|| template.mean_and_energy())
-        .unwrap_or((0.0, 0.0));
+    let template_stats = if sparse_samples.is_none() {
+        template.mean_and_energy()
+    } else {
+        (0.0, 0.0)
+    };
     let constant_value = template.constant_value();
     let owned_integral = cached_integral
         .is_none()

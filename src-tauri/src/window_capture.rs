@@ -18,6 +18,7 @@ pub struct WindowCaptureModeCache {
 }
 
 impl WindowCaptureModeCache {
+    #[cfg(test)]
     pub fn is_visible_mode(&self, hwnd: isize) -> bool {
         self.visible_hwnds.contains(&hwnd)
     }
@@ -160,36 +161,37 @@ pub fn capture_window_preview(hwnd: isize) -> Result<Option<RgbFrame>, CaptureEr
 
 pub fn capture_window_frame(
     hwnd: isize,
-    mut mode_cache: Option<&mut WindowCaptureModeCache>,
+    mode_cache: Option<&mut WindowCaptureModeCache>,
 ) -> Result<Option<RgbFrame>, CaptureError> {
-    if mode_cache
-        .as_deref()
-        .map(|cache| cache.is_visible_mode(hwnd))
-        .unwrap_or(false)
-    {
-        let visible = capture_window_visible(hwnd)?;
-        if visible
-            .as_ref()
-            .map(|frame| !mostly_black(frame))
-            .unwrap_or(false)
-        {
-            return Ok(visible);
-        }
-        if let Some(cache) = mode_cache.as_deref_mut() {
-            cache.clear_visible_mode(hwnd);
-        }
-    }
+    capture_window_frame_with_sources(
+        hwnd,
+        mode_cache,
+        capture_window_visible,
+        capture_window_print,
+    )
+}
 
-    let print_frame = capture_window_print(hwnd)?;
-    let visible_frame = if print_frame
+fn capture_window_frame_with_sources(
+    hwnd: isize,
+    mut mode_cache: Option<&mut WindowCaptureModeCache>,
+    mut capture_visible: impl FnMut(isize) -> Result<Option<RgbFrame>, CaptureError>,
+    mut capture_print: impl FnMut(isize) -> Result<Option<RgbFrame>, CaptureError>,
+) -> Result<Option<RgbFrame>, CaptureError> {
+    let visible_frame = capture_visible(hwnd)?;
+    if visible_frame
         .as_ref()
-        .map(|frame| !mostly_black(frame) && black_fraction(frame, 8) < 0.25)
+        .map(|frame| !mostly_black(frame))
         .unwrap_or(false)
     {
-        None
-    } else {
-        capture_window_visible(hwnd)?
-    };
+        if let Some(cache) = mode_cache.as_deref_mut() {
+            cache.set_visible_mode(hwnd);
+        }
+        return Ok(visible_frame);
+    }
+    if let Some(cache) = mode_cache.as_deref_mut() {
+        cache.clear_visible_mode(hwnd);
+    }
+    let print_frame = capture_print(hwnd)?;
     Ok(choose_window_frame(
         hwnd,
         print_frame,
@@ -199,7 +201,7 @@ pub fn capture_window_frame(
 }
 
 pub fn capture_window_visible(hwnd: isize) -> Result<Option<RgbFrame>, CaptureError> {
-    let Some(rect) = window_rect(hwnd)? else {
+    let Some(rect) = visible_window_rect(hwnd)? else {
         return Ok(None);
     };
     capture_screen_region(CaptureRegion {
@@ -219,6 +221,10 @@ pub fn window_rect(hwnd: isize) -> Result<Option<WindowRect>, CaptureError> {
     window_rect_platform(hwnd)
 }
 
+fn visible_window_rect(hwnd: isize) -> Result<Option<WindowRect>, CaptureError> {
+    visible_window_rect_platform(hwnd)
+}
+
 fn crop_frame(frame: &RgbFrame, left: u32, top: u32, width: u32, height: u32) -> RgbFrame {
     let mut pixels = Vec::with_capacity(width as usize * height as usize * 3);
     for y in top..top + height {
@@ -227,6 +233,51 @@ fn crop_frame(frame: &RgbFrame, left: u32, top: u32, width: u32, height: u32) ->
         pixels.extend_from_slice(&frame.pixels[start..end]);
     }
     RgbFrame::new(width, height, pixels).expect("cropped frame dimensions are valid")
+}
+
+#[cfg(windows)]
+fn visible_window_rect_platform(hwnd: isize) -> Result<Option<WindowRect>, CaptureError> {
+    use std::{ffi::c_void, mem::size_of};
+    use windows::Win32::{
+        Foundation::{HWND, RECT},
+        Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS},
+        UI::WindowsAndMessaging::{GetWindowRect, IsIconic},
+    };
+
+    unsafe {
+        let hwnd = HWND(hwnd as *mut c_void);
+        if IsIconic(hwnd).as_bool() {
+            return Ok(None);
+        }
+        let mut rect = RECT::default();
+        if DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            (&mut rect as *mut RECT).cast::<c_void>(),
+            size_of::<RECT>() as u32,
+        )
+        .is_err()
+            && GetWindowRect(hwnd, &mut rect).is_err()
+        {
+            return Ok(None);
+        }
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        if width < 2 || height < 2 {
+            return Ok(None);
+        }
+        Ok(Some(WindowRect {
+            left: rect.left,
+            top: rect.top,
+            width: width as u32,
+            height: height as u32,
+        }))
+    }
+}
+
+#[cfg(not(windows))]
+fn visible_window_rect_platform(_hwnd: isize) -> Result<Option<WindowRect>, CaptureError> {
+    Ok(None)
 }
 
 #[cfg(windows)]
@@ -450,8 +501,9 @@ fn capture_window_print_platform(_hwnd: isize) -> Result<Option<RgbFrame>, Captu
 #[cfg(test)]
 mod tests {
     use super::{
-        black_fraction, capture_window_frame, capture_window_preview, choose_window_frame,
-        crop_black_padding, mostly_black, window_rect, WindowCaptureModeCache,
+        black_fraction, capture_window_frame, capture_window_frame_with_sources,
+        capture_window_preview, choose_window_frame, crop_black_padding, mostly_black, window_rect,
+        WindowCaptureModeCache,
     };
     use screen_watch_core::detect::RgbFrame;
 
@@ -510,6 +562,39 @@ mod tests {
         let frame =
             choose_window_frame(123, Some(padded), Some(solid(4, 4, [60, 60, 60])), None).unwrap();
         assert_eq!(frame, solid(2, 4, [80, 80, 80]));
+    }
+
+    #[test]
+    fn capture_window_frame_prefers_visible_frame_before_printwindow() {
+        let mut cache = WindowCaptureModeCache::default();
+        let frame = capture_window_frame_with_sources(
+            123,
+            Some(&mut cache),
+            |_| Ok(Some(solid(2, 2, [10, 20, 30]))),
+            |_| panic!("PrintWindow should not be called when visible capture is usable"),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(frame, solid(2, 2, [10, 20, 30]));
+        assert!(cache.is_visible_mode(123));
+    }
+
+    #[test]
+    fn capture_window_frame_falls_back_to_printwindow_when_visible_is_black() {
+        let mut cache = WindowCaptureModeCache::default();
+        cache.set_visible_mode(123);
+        let frame = capture_window_frame_with_sources(
+            123,
+            Some(&mut cache),
+            |_| Ok(Some(solid(2, 2, [0, 0, 0]))),
+            |_| Ok(Some(solid(2, 2, [40, 50, 60]))),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(frame, solid(2, 2, [40, 50, 60]));
+        assert!(!cache.is_visible_mode(123));
     }
 
     #[cfg(windows)]

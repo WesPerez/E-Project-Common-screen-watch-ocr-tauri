@@ -298,6 +298,7 @@ fn monitor_loop(
 ) {
     let mut window_modes = WindowCaptureModeCache::default();
     while !stop.load(Ordering::SeqCst) && active_generation.load(Ordering::SeqCst) == generation {
+        let tick_started = Instant::now();
         let clock = clock_now();
         let mut tick_hits = 0usize;
         let mut tick_target_ids = Vec::new();
@@ -357,7 +358,10 @@ fn monitor_loop(
         ) {
             event_sink.emit(event);
         }
-        sleep_interruptibly(poll_interval, &stop);
+        sleep_interruptibly(
+            remaining_poll_interval(poll_interval, tick_started.elapsed()),
+            &stop,
+        );
     }
     if let Ok(Some(snapshot)) = mark_stopped_if_active(&snapshot, &active_generation, generation) {
         event_sink.emit(stopped_event(snapshot));
@@ -592,6 +596,10 @@ fn sleep_interruptibly(duration: Duration, stop: &AtomicBool) {
     }
 }
 
+fn remaining_poll_interval(poll_interval: Duration, elapsed: Duration) -> Duration {
+    poll_interval.saturating_sub(elapsed)
+}
+
 fn poll_interval_duration(seconds: f64) -> Duration {
     if !seconds.is_finite() || seconds <= 0.0 {
         return MIN_POLL_INTERVAL;
@@ -623,9 +631,9 @@ fn clock_now() -> MonitorClock {
 mod tests {
     use super::{
         alerted_target_ids, mark_stopped, poll_interval_duration, record_monitor_tick,
-        started_event, stopped_event, window_source_name, AlarmBeepState, MonitorClock,
-        MonitorSessionEventKind, MonitorSessionSnapshot, MonitorSessionState, MonitorSources,
-        MonitorWorker, MIN_POLL_INTERVAL, START_STOP_JOIN_GRACE,
+        remaining_poll_interval, started_event, stopped_event, window_source_name, AlarmBeepState,
+        MonitorClock, MonitorSessionEventKind, MonitorSessionSnapshot, MonitorSessionState,
+        MonitorSources, MonitorWorker, MIN_POLL_INTERVAL, START_STOP_JOIN_GRACE,
     };
     use screen_watch_core::{
         config::{WatchConfig, WindowAppConfig, WindowConfig},
@@ -656,6 +664,22 @@ mod tests {
         assert_eq!(poll_interval_duration(-1.0), MIN_POLL_INTERVAL);
         assert_eq!(poll_interval_duration(f64::NAN), MIN_POLL_INTERVAL);
         assert_eq!(poll_interval_duration(0.25), Duration::from_millis(250));
+    }
+
+    #[test]
+    fn remaining_poll_interval_subtracts_scan_time_from_sleep() {
+        assert_eq!(
+            remaining_poll_interval(Duration::from_millis(1200), Duration::from_millis(450)),
+            Duration::from_millis(750)
+        );
+    }
+
+    #[test]
+    fn remaining_poll_interval_skips_sleep_when_scan_exceeds_interval() {
+        assert_eq!(
+            remaining_poll_interval(Duration::from_millis(1200), Duration::from_millis(1500)),
+            Duration::ZERO
+        );
     }
 
     #[test]
