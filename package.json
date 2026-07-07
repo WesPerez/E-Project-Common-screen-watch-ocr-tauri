@@ -9,6 +9,7 @@
     "test:frontend": "node --test src/*.test.js",
     "audit:feature-surface": "node scripts/feature-surface-audit.mjs",
     "audit:python-baseline-coverage": "node scripts/python-baseline-coverage-audit.mjs",
+    "audit:legacy-cli-boundary": "node scripts/legacy-cli-boundary-audit.mjs",
     "verify:migration": "powershell -ExecutionPolicy Bypass -File scripts/verify-migration.ps1",
     "ocr:smoke": "powershell -ExecutionPolicy Bypass -File scripts/ocr-smoke.ps1",
     "ocr:corpus:smoke": "powershell -ExecutionPolicy Bypass -File scripts/ocr-corpus-smoke.ps1",

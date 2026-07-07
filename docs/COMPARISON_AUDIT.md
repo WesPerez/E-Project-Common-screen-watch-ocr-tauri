@@ -63,6 +63,7 @@ Everything else is separated so old and new processes do not collide:
 | Frontend visible UI parity | Latest focused frontend rerun passed 105 unit tests after locking target select-all/invert behavior and evidence-directory feedback. The Tauri target toolbar starts with `全选`, switches through `profileToggleAllLabel()` to `反选` only when all targets are enabled, `legacyVisibleWorkflowContract` statically checks the old Python `全选`/`反选` source text, new HTML text, frontend helper, and unit test, and `legacyUiSurfaceContract` verifies the old profile/startup/gallery/source/region/match/run/status/log/preview surface remains represented in the compact resizable Tauri UI |
 | Automated feature surface audit | `npm run audit:feature-surface` now checks the old Python app source, Tauri HTML/frontend/backend command registration, comparison evidence, and migration verifier for 13 feature groups: profile/startup, template toolbar, dynamic target cards, screen/app sources, match settings, previews, scan/monitor/logs, evidence files, tray/single-instance identity, profile compatibility, detection engines, resizable one-page layout, and packaging/WebView2 boundaries |
 | Automated Python baseline coverage audit | `npm run audit:python-baseline-coverage` maps all 98 locked Python baseline tests into 6 behavior groups and requires Tauri-side test/smoke/documentation evidence for detector/config logic, window capture/preview/DWM, profile gallery/hit-count behavior, layout/input behavior, tray/startup/single-instance lifecycle, and monitoring/events/evidence/audio behavior |
+| Legacy Python CLI boundary audit | `npm run audit:legacy-cli-boundary` verifies the old Python CLI subcommands `app`, `list-monitors`, `once`, `watch`, `screenshot`, `make-demo`, and `self-test`, then checks the Tauri backend/GUI equivalents and the documented boundary. The CLI interface is not preserved in the single GUI exe: `list-monitors`, `once/watch`, arbitrary `screenshot-to-path`, and `make-demo/self-test` are covered by backend commands, GUI workflows, and smoke fixtures, but not exposed as terminal subcommands |
 | Desktop smoke | Latest `-IncludeDesktopSmoke` rerun passed 16 real Windows desktop gates with Rust core 124, Tauri 92, and OCR feature 28 still passing: screen capture, monitor listing, one-shot screen/window scan, profile screen/window scan, screen/window/remembered-window screenshot-as-template capture, persistent screen/window monitoring, app-window enumeration, preview/frame capture, and real DWM thumbnail register/update/clear |
 | Packaged smoke | Current rerun against final SHA-256 `8986F116...` verified PE subsystem WindowsGui (2), start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/ports using `release-single\ScreenWatchOCRTauri.exe`; after the old immediate-close automation reproduced the hide timeout, the app now prevents close before hiding and the smoke waits 750ms after visible startup. The resulting packaged smoke loop passed 10/10 in `packaged-smoke-loop-20260707-192844.log` |
 | Tray menu smoke | Current rerun against final SHA-256 `8986F116...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`; tray menu PID matched Tauri PID `48988`, exit code was 0, and old Python tray/processes were not touched |
@@ -118,6 +119,7 @@ Everything else is separated so old and new processes do not collide:
 | Single exe launch on arbitrary Windows PCs | Proven with boundary | final single exe smokes plus local WebView2 audit | Machines without WebView2 need the installer or WebView2 installed first; the tiny single exe intentionally does not bundle a browser engine |
 | Installer repeatability | Historical pass | manual evidence records lite/full installer smoke | Not rerun after the current UI/monitoring fix; current single-file exe smoke is fresh |
 | Portable package lite/full | Fresh lite and full pass | package verifier produced and content-verified fresh lite and full portable zips, including manifest/build-info/hash checks and no bundled OCR models | None known for package contents; final user deliverable remains the single exe |
+| Legacy Python CLI commands | Behavior covered, CLI interface not preserved | `list-monitors` maps to Tauri `list_monitors` and visible monitor selection; `once/watch` map to raw/profile scan and monitoring commands; screenshot capture maps to preview and screenshot-as-template workflows; `make-demo/self-test` map to generated smoke fixtures and Rust/frontend/OCR smoke tests | Users who automate `python -m screen_watch ...` terminal commands should keep the Python CLI or request a separate CLI deliverable; the current Tauri deliverable is a single Windows GUI exe |
 
 ## Current Conclusion
 
@@ -130,6 +132,11 @@ for distribution is: the single exe runs on Windows machines that already have
 Microsoft Edge WebView2 Runtime, which is the normal Windows 11 case and the
 case verified on this machine. For older or locked-down Windows machines where
 WebView2 is absent, use the Tauri/NSIS installer or install WebView2 first.
+
+The replacement is not a command-line compatible drop-in for
+`python -m screen_watch`. Old CLI behaviors are either covered through Tauri
+backend/GUI workflows or retained as test fixtures, but the single GUI exe does
+not expose the old terminal subcommands.
 
 Do not claim broad OCR model parity with the Python RapidOCR/PP-OCRv6 path yet.
 The new app has a working optional OCR architecture, a Python-vs-Rust OCR text
