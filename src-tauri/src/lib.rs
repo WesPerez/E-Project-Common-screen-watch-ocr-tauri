@@ -754,9 +754,16 @@ fn open_profile_target_file(
 
 #[tauri::command]
 fn open_evidence_dir() -> Result<OpenTargetFileResult, String> {
-    let path = screenshots_dir(user_data_dir());
+    open_evidence_dir_at(user_data_dir(), open_path_with_default_app)
+}
+
+fn open_evidence_dir_at(
+    data_dir: impl AsRef<Path>,
+    opener: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<OpenTargetFileResult, String> {
+    let path = screenshots_dir(data_dir);
     std::fs::create_dir_all(&path).map_err(|err| err.to_string())?;
-    open_path_with_default_app(&path)?;
+    opener(&path)?;
     Ok(OpenTargetFileResult {
         path: path.display().to_string(),
     })
@@ -1521,11 +1528,11 @@ fn migrate_legacy_data_for_current_exe() {
 mod tests {
     use super::{
         capture_profile_source_frame_from_sources, concrete_windows_from_sources,
-        core_monitors_from_listed, one_shot_alerted_target_ids, parse_open_file_name_buffer,
-        profile_capture_sources_for_monitors, profile_target_file_to_open,
-        profile_target_thumbnail_at, scan_resolved_screen_regions_once, with_virtual_monitor,
-        AppInfo, ListedMonitor, OneShotScanResult, ProfileCaptureSources, ProfileHitSink,
-        ScanClock,
+        core_monitors_from_listed, one_shot_alerted_target_ids, open_evidence_dir_at,
+        parse_open_file_name_buffer, profile_capture_sources_for_monitors,
+        profile_target_file_to_open, profile_target_thumbnail_at,
+        scan_resolved_screen_regions_once, with_virtual_monitor, AppInfo, ListedMonitor,
+        OneShotScanResult, ProfileCaptureSources, ProfileHitSink, ScanClock,
     };
     use crate::audio::AlarmBeepState;
     use crate::monitor_session::{
@@ -1542,9 +1549,9 @@ mod tests {
         profile::{
             add_profile_template_frames_at, add_profile_template_pngs_at, clear_profile_targets_at,
             profile_path, profile_watch_config_at, read_profile_at, record_profile_hits_at,
-            remove_profile_target_at, reorder_profile_target_at, set_profile_target_enabled_at,
-            templates_dir, toggle_all_profile_targets_at, ProfileTargetsEditResult,
-            ProfileWatchConfigOptions,
+            remove_profile_target_at, reorder_profile_target_at, screenshots_dir,
+            set_profile_target_enabled_at, templates_dir, toggle_all_profile_targets_at,
+            ProfileTargetsEditResult, ProfileWatchConfigOptions,
         },
         scan::ScanFrameResult,
         sources::{BBox, MonitorInfo, ResolvedRegion, ResolvedSources},
@@ -1888,6 +1895,40 @@ mod tests {
 
         assert_eq!(value["selectedIndex"], json!(1));
         assert!(value.get("selected_index").is_none());
+    }
+
+    #[test]
+    fn open_evidence_dir_uses_python_compatible_screenshots_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data_dir = tmp.path().join("ScreenWatchOCR");
+        let expected = screenshots_dir(&data_dir);
+        let mut opened = None;
+
+        let result = open_evidence_dir_at(&data_dir, |path| {
+            opened = Some(path.to_path_buf());
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(opened.as_deref(), Some(expected.as_path()));
+        assert_eq!(result.path, expected.display().to_string());
+        assert!(expected.is_dir());
+        assert!(!tmp.path().join("alerts").exists());
+    }
+
+    #[test]
+    fn open_evidence_dir_reports_shell_open_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data_dir = tmp.path().join("ScreenWatchOCR");
+        let expected = screenshots_dir(&data_dir);
+
+        let err = open_evidence_dir_at(&data_dir, |_path| {
+            Err("shell open failed for test".to_string())
+        })
+        .unwrap_err();
+
+        assert!(err.contains("shell open failed for test"));
+        assert!(expected.is_dir());
     }
 
     #[test]

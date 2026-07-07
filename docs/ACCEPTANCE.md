@@ -1203,6 +1203,17 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   `True`, `singleFileDeliverableContract: 3587584 bytes,
   B7356D3A96810AA70FEF42EE1FB360516411D145B1E8630F6A49F840C1EFE3A4,
   WindowsGui`, and `liteSizeGate: passed`.
+- After hardening the evidence-directory open path:
+  `cargo test -p screen-watch-ocr-tauri --lib` passed with Tauri shell/backend
+  `91 passed, 16 ignored`. The new tests prove `open_evidence_dir` creates and
+  returns the Python-compatible `ScreenWatchOCR\screenshots` directory without
+  switching to the legacy `alerts` path, and that shell-open failures surface as
+  command errors. The focused verifier
+  `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1
+  -SkipPython -SkipFrontend -SkipRelease` then passed with Rust core `124
+  passed, 3 ignored`, Tauri shell/backend `91 passed, 16 ignored`, OCR feature
+  `28 passed`, and the same final single-file deliverable hash
+  `B7356D3A96810AA70FEF42EE1FB360516411D145B1E8630F6A49F840C1EFE3A4`.
 - Current optional `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1
   -SkipPython -SkipFrontend -SkipRelease -IncludeTemplateBenchmark
   -IncludePackagedSmoke -IncludePortablePackage -IncludeFullPortablePackage`
