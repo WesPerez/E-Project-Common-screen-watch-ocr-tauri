@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 13:18 +08:00
+Last updated: 2026-07-07 13:46 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -72,7 +72,7 @@ Everything else is separated so old and new processes do not collide:
 | Portable package verification | latest lite portable 1,616,326 bytes and latest full portable 3,752,774 bytes are both content-verified by `scripts\package-portable.ps1`; both keep OCR models external and reject bundled `.onnx` assets; final user deliverable remains the fresh single exe |
 | Template benchmark | 2560x1440, 8 templates current rerun: Rust flat 74ms 8/8, Rust textured 445ms 8/8; Python/OpenCV flat 46ms 8/8, Python/OpenCV textured 45ms with the known 4/8 odd-phase baseline miss |
 | Production template smoke | profile_1 real templates current rerun: 18/18 matched on 2560x1440 synthetic placement; 6445ms recorded with threshold 0.90, scales 1.0, and template_workers 2 |
-| Real OCR smoke | Current rerun passed with external PP-OCRv5 English models recognizing READY and external PP-OCRv5 Chinese models recognizing a generated `准备好了` PNG through `cargo test --features ocr`; `npm run ocr:text:parity` compared old Python `Detector._ocr` supplied-row semantics against Rust OCR text detection/ScanEngine tests, and `npm run ocr:corpus:smoke` recognized READY, ALERT 42, OCR TEST, 准备好了, and 开始监控 generated PNGs |
+| Real OCR smoke | Current rerun passed with external PP-OCRv5 English models recognizing READY and external PP-OCRv5 Chinese models recognizing a generated `准备好了` PNG through `cargo test --features ocr`; `npm run ocr:text:parity` compared old Python `Detector._ocr` supplied-row semantics against Rust OCR text detection/ScanEngine tests, and current `npm run ocr:corpus:smoke` recognized READY, ALERT 42, OCR TEST, SCAN COMPLETE, ERROR 100%, 准备好了, 开始监控, 屏幕监控, and 发现异常 generated PNGs |
 | Manual evidence status | 18 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |
 
 ## Feature Matrix
@@ -89,7 +89,7 @@ Everything else is separated so old and new processes do not collide:
 | Hit-count badges and clear hit menu | Proven | frontend tests, WebView context-menu smoke | None known |
 | Pixel target detection | Proven | Python baseline, Rust core tests, scan tests | None known |
 | Template target detection, scales, worker limit | Proven | Rust detector tests, parity/benchmark gates | Production-profile smoke records about 6.6s for 18 real templates on synthetic 1440p placement; acceptable but worth tracking |
-| OCR target detection | Partially proven | text-row core tests, Python-vs-Rust OCR text parity smoke, current real PP-OCRv5 English READY and Chinese `准备` recognition smokes | PP-OCRv6/RapidOCR-native compatibility, broad OCR quality, and varied real screenshots remain future validation items |
+| OCR target detection | Partially proven | text-row core tests, Python-vs-Rust OCR text parity smoke, current real PP-OCRv5 English/Chinese recognition smokes, and a 9-case generated OCR corpus covering English status/number/symbol text plus Chinese UI/alert text | PP-OCRv6/RapidOCR-native compatibility, broad real screenshot quality, and production OCR workload performance remain future validation items |
 | Screen source listing, mss-style monitor indexes, and region persistence | Proven | desktop monitor-listing smoke, frontend `profileRegion` test, core window-only profile save test | Exotic multi-monitor DPI/topology combinations still need spot checks |
 | App-window listing, duplicate ordinals, remembered apps | Proven | window source tests, desktop remembered-window gates | Apps that refuse capture remain an OS/window limitation |
 | Existing Python profile/template/state compatibility | Proven with write-concurrency boundary | core profile preservation tests, packaged migration smoke, legacy profile WebView end-to-end smoke, legacy late-start remembered-app WebView smoke, Python-read-Tauri profile compatibility smoke | Tauri preserves unknown profile/state fields in the current contract; old Python can read required Tauri-shaped fields, but old Python save drops unknown future top-level/match/state/layout fields and overwrites Tauri-style disk updates made after Python load |

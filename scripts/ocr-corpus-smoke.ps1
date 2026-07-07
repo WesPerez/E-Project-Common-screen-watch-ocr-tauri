@@ -161,6 +161,26 @@ $cases = @(
         FontSize = 50
     },
     [pscustomobject][ordered]@{
+        Name = "english-scan-complete"
+        Text = "SCAN COMPLETE"
+        FileName = "english-scan-complete.png"
+        Expect = "COMPLETE"
+        ModelDir = $EnglishModelDir
+        Width = 620
+        Height = 150
+        FontSize = 48
+    },
+    [pscustomobject][ordered]@{
+        Name = "english-error-percent"
+        Text = "ERROR 100%"
+        FileName = "english-error-percent.png"
+        Expect = "ERROR"
+        ModelDir = $EnglishModelDir
+        Width = 560
+        Height = 150
+        FontSize = 50
+    },
+    [pscustomobject][ordered]@{
         Name = "chinese-ready"
         Text = ([char[]]@(0x51C6, 0x5907, 0x597D, 0x4E86) -join "")
         FileName = "chinese-ready.png"
@@ -175,6 +195,26 @@ $cases = @(
         Text = ([char[]]@(0x5F00, 0x59CB, 0x76D1, 0x63A7) -join "")
         FileName = "chinese-monitor.png"
         Expect = ([char[]]@(0x76D1, 0x63A7) -join "")
+        ModelDir = $ChineseModelDir
+        Width = 520
+        Height = 150
+        FontSize = 50
+    },
+    [pscustomobject][ordered]@{
+        Name = "chinese-screen-monitor"
+        Text = ([char[]]@(0x5C4F, 0x5E55, 0x76D1, 0x63A7) -join "")
+        FileName = "chinese-screen-monitor.png"
+        Expect = ([char[]]@(0x76D1, 0x63A7) -join "")
+        ModelDir = $ChineseModelDir
+        Width = 520
+        Height = 150
+        FontSize = 50
+    },
+    [pscustomobject][ordered]@{
+        Name = "chinese-alert"
+        Text = ([char[]]@(0x53D1, 0x73B0, 0x5F02, 0x5E38) -join "")
+        FileName = "chinese-alert.png"
+        Expect = ([char[]]@(0x5F02, 0x5E38) -join "")
         ModelDir = $ChineseModelDir
         Width = 520
         Height = 150

@@ -1609,6 +1609,7 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
 - OpenCV/Python performance comparison against representative production
   template sets; the fixed synthetic parity script exists and currently records
   Python/OpenCV ahead of pure Rust on that workload.
-- Broader OCR quality coverage beyond the English PP-OCRv5 `READY` and Chinese
-  PP-OCRv5 `准备` smokes: PP-OCRv6/RapidOCR-native profile compatibility and
-  production image accuracy remain future validation items.
+- Broader OCR quality coverage beyond the current 9-case generated English and
+  Chinese PP-OCRv5 corpus: PP-OCRv6/RapidOCR-native profile compatibility,
+  varied real screenshot accuracy, and production OCR workload performance
+  remain future validation items.

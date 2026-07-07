@@ -149,8 +149,9 @@ Expected evidence:
 - `native_ocr_real_model_recognizes_smoke_png` passes when image/expect are
   supplied.
 - `ocrCorpusSmoke: passed`, with generated English `READY`, `ALERT 42`,
-  `OCR TEST`, Chinese `准备好了`, and Chinese `开始监控` PNG cases passing
-  against external PP-OCRv5-style model directories.
+  `OCR TEST`, `SCAN COMPLETE`, `ERROR 100%`, Chinese `准备好了`,
+  `开始监控`, `屏幕监控`, and `发现异常` PNG cases passing against external
+  PP-OCRv5-style model directories.
 - `ocrTextParitySmoke: passed`, with Python baseline `Detector._ocr` supplied-row
   cases and Rust OCR text detection/ScanEngine cases passing in the result JSON.
 - The run does not copy or embed OCR model files into the app package.
