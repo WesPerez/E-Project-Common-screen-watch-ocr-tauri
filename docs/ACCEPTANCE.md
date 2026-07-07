@@ -1194,6 +1194,22 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   PNG/JPG/JPEG/BMP/WebP path imports, clipboard bitmap and file-list paste,
   one-shot scan evidence, monitoring start/stop/restart, and all layout
   splitter drags in one final-exe run.
+- Current default `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1`
+  passed with Python inventory `98`, Python unittest `98`, Rust core `121
+  passed, 3 ignored`, Tauri shell/backend `88 passed, 16 ignored`, OCR feature
+  `25 passed`, frontend `103 passed`, frontend build `True`, release build
+  `True`, `singleFileDeliverableContract: 3587072 bytes,
+  6363339BD12B57FAB97204785C314C62E52C6DECF73823187BBA723FCFD96BAB,
+  WindowsGui`, and `liteSizeGate: passed`.
+- Current optional `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1
+  -SkipPython -SkipFrontend -SkipRelease -IncludeTemplateBenchmark
+  -IncludePackagedSmoke -IncludePortablePackage -IncludeFullPortablePackage`
+  passed with template benchmarks `81ms` flat and `457ms` textured, packaged
+  smoke `ran`, lite portable
+  `screen-watch-ocr-tauri-lite-portable-20260707-065219-73bb7825.zip`
+  verified at `1,616,329` bytes, and full portable
+  `screen-watch-ocr-tauri-full-portable-20260707-065500-3652923c.zip`
+  verified at `3,753,074` bytes.
 - `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1 -SkipPython -SkipFrontend -SkipRelease`:
   passed after adding the production-profile template benchmark gate and
   verifier contract. The summary reported Rust core `117 passed, 3 ignored`,
