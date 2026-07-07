@@ -1574,6 +1574,71 @@ function Assert-LegacyVisibleWorkflowContract {
     Assert-TextContains "legacy visible workflow max_alerts profile cleanup" $profileSource 'out.remove("max_alerts")'
 }
 
+function Assert-LegacyProfilePersistenceContract {
+    param(
+        [string]$ProjectRootPath,
+        [string]$PythonProjectPath
+    )
+
+    $pythonSource = Get-Content -LiteralPath (Join-Path $PythonProjectPath "src\screen_watch\app.py") -Raw
+    $profileSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "crates\screen-watch-core\src\profile.rs") -Raw
+    $frontendBehaviorSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.js") -Raw
+    $frontendTestSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.test.js") -Raw
+
+    $saveStateMatch = [regex]::Match($pythonSource, "(?s)def save_state\(self\):.*?def current_window_geometry")
+    if (-not $saveStateMatch.Success) {
+        throw "Could not locate Python save_state block"
+    }
+    $saveState = $saveStateMatch.Value
+    foreach ($expected in @(
+            '"last_profile": self.current_profile',
+            '"layout": {',
+            '"geometry": geometry',
+            '"main_ratio": self.main_ratio',
+            '"right_ratio": self.right_ratio',
+            '"left_ratio": self.left_ratio',
+            '"max_alerts": self.max_alerts.get()'
+        )) {
+        Assert-TextContains "Python save_state persistence contract" $saveState $expected
+    }
+
+    $saveProfileMatch = [regex]::Match($pythonSource, "(?s)def save_current_profile\(self\):.*?def load_profile")
+    if (-not $saveProfileMatch.Success) {
+        throw "Could not locate Python save_current_profile block"
+    }
+    $saveProfile = $saveProfileMatch.Value
+    foreach ($expected in @(
+            '"targets": self.targets',
+            '"monitors": [i for i, var in self.monitor_vars.items() if var.get()]',
+            '"windows": self.selected_apps',
+            '"region": {"left": self.left.get(), "top": self.top.get(), "width": self.width.get(), "height": self.height.get()}',
+            '"threshold": self.threshold.get()',
+            '"scales": self.scales.get()',
+            '"interval_ms": self.interval_ms.get()',
+            '"cooldown": self.cooldown.get()',
+            '"beep": self.beep.get()',
+            '"beep_seconds": self.beep_seconds.get()',
+            '"beep_volume": self.beep_volume.get()',
+            '"max_templates": self.max_templates.get()'
+        )) {
+        Assert-TextContains "Python profile persistence contract" $saveProfile $expected
+    }
+    if ($saveProfile.Contains('"max_alerts"')) {
+        throw "Python profile persistence contract changed: max_alerts must remain global state, not profile match data"
+    }
+
+    foreach ($expected in @(
+            "pub profile_region: Option<RegionConfig>",
+            ".or_else(|| options.regions.first())",
+            'out.remove("max_alerts")',
+            "pub fn save_max_alerts_at"
+        )) {
+        Assert-TextContains "Tauri profile persistence contract" $profileSource $expected
+    }
+    Assert-TextContains "frontend profile region persistence contract" $frontendBehaviorSource "profileRegion: normalizedRegion(state.region)"
+    Assert-TextContains "frontend window-only region persistence test" $frontendTestSource "profile source options keep region inputs even without selected monitors"
+}
+
 function Assert-FrontendOcrReadinessContract {
     param([string]$ProjectRootPath)
 
@@ -1830,6 +1895,7 @@ $summary = [ordered]@{
     frontendActionBindingContract = $null
     frontendDynamicTargetContract = $null
     legacyVisibleWorkflowContract = $null
+    legacyProfilePersistenceContract = $null
     frontendOcrReadinessContract = $null
     frontendSourcePreviewContract = $null
     backendCommandContract = $null
@@ -2151,6 +2217,13 @@ Invoke-CapturedStep `
     -Script { Assert-LegacyVisibleWorkflowContract $ProjectRootPath $PythonProjectPath } `
     -SuppressOutput | Out-Null
 $summary.legacyVisibleWorkflowContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Legacy profile persistence contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-LegacyProfilePersistenceContract $ProjectRootPath $PythonProjectPath } `
+    -SuppressOutput | Out-Null
+$summary.legacyProfilePersistenceContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Frontend OCR readiness/probe contract" `

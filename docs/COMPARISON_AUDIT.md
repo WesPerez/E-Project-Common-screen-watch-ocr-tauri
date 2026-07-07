@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 08:09 +08:00
+Last updated: 2026-07-07 08:17 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -41,8 +41,8 @@ Everything else is separated so old and new processes do not collide:
 | Evidence | Current result |
 | --- | --- |
 | Python baseline unittest | Current rerun passed 98 tests with `PYTHONPATH=src; python -m unittest -v`; `python -m screen_watch app --smoke-test` returned `{"ok": true, "monitors": 3}` |
-| Main migration verifier | Rust core 120, Tauri 85, OCR feature 24, frontend 102, frontend build and static contracts passed; `legacyVisibleWorkflowContract` maps old visible Python workflows to new controls, frontend handlers, and registered Tauri commands, including the Python-compatible global `state.json` `max_alerts` path and window-only `profileRegion` persistence; `singleFileDeliverableContract` now checks the current single exe size/hash in this audit and verifies PE subsystem WindowsGui (2) when `release-single\ScreenWatchOCRTauri.exe` is present; Python baseline has fresh standalone evidence above |
-| Desktop smoke | 16 real Windows desktop gates passed |
+| Main migration verifier | Rust core 120, Tauri 85, OCR feature 24, frontend 102, frontend build and static contracts passed; `legacyVisibleWorkflowContract` maps old visible Python workflows to new controls, frontend handlers, and registered Tauri commands, including the Python-compatible global `state.json` `max_alerts` path and window-only `profileRegion` persistence; `legacyProfilePersistenceContract` now locks Python `save_state`/`save_current_profile` field placement against the Tauri profile/state persistence paths; `singleFileDeliverableContract` checks the current single exe size/hash in this audit and verifies PE subsystem WindowsGui (2) when `release-single\ScreenWatchOCRTauri.exe` is present; Python baseline has fresh standalone evidence above |
+| Desktop smoke | Current rerun passed 16 real Windows desktop gates: screen capture, monitor listing, one-shot screen/window scan, profile screen/window scan, screen/window/remembered-window screenshot-as-template capture, persistent screen/window monitoring, app-window enumeration, preview/frame capture, and real DWM thumbnail register/update/clear |
 | Packaged smoke | final SHA-256 `5F24F3E...` is PE subsystem WindowsGui (2), not console; it passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port using `release-single\ScreenWatchOCRTauri.exe` |
 | Tray menu smoke | final SHA-256 `5F24F3E...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0; old Python tray/processes were not touched |
 | WebView visual smoke | final SHA-256 `5F24F3E...` passed clipboard paste, monitoring restart, layout resize, and legacy late-start remembered app-window recovery in packaged WebView2 runs. The late-start smoke loaded an old Python-shaped profile while the remembered app was absent, recorded `skippedWindowApps=1`, then started the app later and scanned/monitored with positive hits without refreshing or reselecting. Clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with 43x25 target thumbs inside 48x52 cards; monitoring restart recorded generation 1 then 2, first run 7 ticks/7 hits and second run 2 ticks/2 hits with the button restored to `开始监控`; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, and control-panel group splitter +32px/-32px |
