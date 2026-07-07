@@ -1,7 +1,7 @@
 use crate::config::{parse_scales, ConfigError, TargetConfig, WatchConfig};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BinaryHeap,
+    collections::{BinaryHeap, HashMap},
     fs::File,
     io::{self, BufReader},
     path::{Path, PathBuf},
@@ -86,6 +86,13 @@ struct CandidateLoc {
     score: f32,
     x: u32,
     y: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ExactGrayAnchor {
+    x: u32,
+    y: u32,
+    value: f32,
 }
 
 impl Eq for CandidateLoc {}
@@ -768,6 +775,9 @@ fn find_template_best_gray_adaptive(
     template: &GrayFrame,
 ) -> Option<TemplateMatch> {
     let frame = frame_cache.full();
+    if let Some(hit) = find_template_exact_gray(frame, template) {
+        return Some(hit);
+    }
     let full_integral = frame_cache.integral_for_factor(1.0);
     let Some((factor, coarse_templates)) = coarse_plan(frame, template) else {
         return find_template_best_gray_in_region_cached(
@@ -844,6 +854,109 @@ fn find_template_best_gray_adaptive(
         }
     }
     best
+}
+
+fn find_template_exact_gray(frame: &GrayFrame, template: &GrayFrame) -> Option<TemplateMatch> {
+    if template.width == 0
+        || template.height == 0
+        || template.width > frame.width
+        || template.height > frame.height
+    {
+        return None;
+    }
+
+    let anchor = exact_match_anchor(template)?;
+    let samples = exact_match_samples(template);
+    let max_x = frame.width - template.width;
+    let max_y = frame.height - template.height;
+    let scan_width = max_x as usize + 1;
+    for y in 0..=max_y {
+        let row_start = ((y + anchor.y) * frame.width + anchor.x) as usize;
+        let row = &frame.pixels[row_start..row_start + scan_width];
+        'candidate: for (x_offset, value) in row.iter().enumerate() {
+            if *value != anchor.value {
+                continue;
+            }
+            let x = x_offset as u32;
+            for (sample_x, sample_y, value) in &samples {
+                if frame.pixel(x + *sample_x, y + *sample_y) != *value {
+                    continue 'candidate;
+                }
+            }
+            if gray_template_matches_at(frame, template, x, y) {
+                return Some(TemplateMatch {
+                    score: 1.0,
+                    box_xyxy: [x, y, x + template.width, y + template.height],
+                    scale: 1.0,
+                });
+            }
+        }
+    }
+    None
+}
+
+fn exact_match_anchor(template: &GrayFrame) -> Option<ExactGrayAnchor> {
+    if template.width == 0 || template.height == 0 || template.pixels.is_empty() {
+        return None;
+    }
+
+    let mut counts = HashMap::new();
+    for value in &template.pixels {
+        *counts.entry(value.to_bits()).or_insert(0usize) += 1;
+    }
+
+    let center_x_twice = i64::from(template.width.saturating_sub(1));
+    let center_y_twice = i64::from(template.height.saturating_sub(1));
+    let mut best: Option<((usize, i64, u32, u32), ExactGrayAnchor)> = None;
+    for (index, value) in template.pixels.iter().enumerate() {
+        let x = index as u32 % template.width;
+        let y = index as u32 / template.width;
+        let distance_from_center =
+            (i64::from(x) * 2 - center_x_twice).abs() + (i64::from(y) * 2 - center_y_twice).abs();
+        let key = (
+            *counts.get(&value.to_bits()).unwrap_or(&usize::MAX),
+            distance_from_center,
+            y,
+            x,
+        );
+        let anchor = ExactGrayAnchor {
+            x,
+            y,
+            value: *value,
+        };
+        if best
+            .as_ref()
+            .map(|(best_key, _)| key < *best_key)
+            .unwrap_or(true)
+        {
+            best = Some((key, anchor));
+        }
+    }
+    best.map(|(_, anchor)| anchor)
+}
+
+fn exact_match_samples(template: &GrayFrame) -> Vec<(u32, u32, f32)> {
+    let mut samples = Vec::with_capacity(9);
+    for y in sample_positions(template.height) {
+        for x in sample_positions(template.width) {
+            samples.push((x, y, template.pixel(x, y)));
+        }
+    }
+    samples
+}
+
+fn gray_template_matches_at(frame: &GrayFrame, template: &GrayFrame, left: u32, top: u32) -> bool {
+    for ty in 0..template.height {
+        let frame_start = ((top + ty) * frame.width + left) as usize;
+        let template_start = (ty * template.width) as usize;
+        let width = template.width as usize;
+        if frame.pixels[frame_start..frame_start + width]
+            != template.pixels[template_start..template_start + width]
+        {
+            return false;
+        }
+    }
+    true
 }
 
 fn coarse_plan(frame: &GrayFrame, template: &GrayFrame) -> Option<(f64, Vec<CoarseTemplate>)> {
@@ -1576,6 +1689,45 @@ mod tests {
         .unwrap();
         let template = RgbFrame::new(2, 2, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]).unwrap();
         assert_eq!(find_template_exact(&frame, &template), Some([1, 1, 3, 3]));
+    }
+
+    #[test]
+    fn exact_gray_template_detection_uses_rarest_anchor_and_checks_all_columns() {
+        let template = super::GrayFrame {
+            width: 3,
+            height: 3,
+            pixels: vec![
+                10.0, 10.0, 10.0, //
+                10.0, 10.0, 99.0, //
+                10.0, 10.0, 10.0,
+            ],
+        };
+        let anchor = super::exact_match_anchor(&template).unwrap();
+        assert_eq!(
+            anchor,
+            super::ExactGrayAnchor {
+                x: 2,
+                y: 1,
+                value: 99.0
+            }
+        );
+
+        let mut pixels = vec![1.0; 8 * 6];
+        for y in 0..template.height {
+            for x in 0..template.width {
+                pixels[((y + 2) * 8 + x + 4) as usize] = template.pixel(x, y);
+            }
+        }
+        let frame = super::GrayFrame {
+            width: 8,
+            height: 6,
+            pixels,
+        };
+
+        let hit = super::find_template_exact_gray(&frame, &template).unwrap();
+
+        assert_eq!(hit.box_xyxy, [4, 2, 7, 5]);
+        assert_eq!(hit.score, 1.0);
     }
 
     #[test]

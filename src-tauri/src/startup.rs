@@ -10,7 +10,7 @@ use std::{
 
 pub const STARTUP_LINK_NAME: &str = "屏幕监控OCR Tauri.lnk";
 pub const START_MINIMIZED_ARG: &str = "--start-minimized";
-const POWERSHELL_TIMEOUT: Duration = Duration::from_secs(10);
+const POWERSHELL_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
