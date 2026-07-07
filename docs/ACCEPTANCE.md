@@ -24,13 +24,13 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
 
 ## Current Rust/Tauri Verification
 
-- Current status snapshot as of 2026-07-07 19:03 +08:00:
-  `docs\VERIFICATION_RUN_20260707_1903.md` and
+- Current status snapshot as of 2026-07-07 19:47 +08:00:
+  `docs\VERIFICATION_RUN_20260707_1947.md` and
   `docs\COMPARISON_AUDIT.md` are the current top-level evidence records. The
   manual evidence gate is `19 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete,
   0 invalid`; the delivered single-file exe is
   `release-single\ScreenWatchOCRTauri.exe`, 3,587,584 bytes, SHA-256
-  `98F47746B032B9F5326083AB2C4BF6BB8F1567583F5FCC71757F56E121A0C7C0`, and the
+  `8986F1168578CF6B564229E3D80C12DC1E8809138B0786B38C8DD99B46E3BF9A`, and the
   migration verifier locks it as a Windows GUI subsystem executable.
 - `scripts\verify-migration.ps1` is the repeatable migration gate. It runs the
   static Python test inventory check, Python baseline count check, Rust
@@ -1209,7 +1209,7 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   rebuild with Rust core `124 passed, 3 ignored`, Tauri shell/backend `92
   passed, 16 ignored`, OCR feature `28 passed`,
   `singleFileDeliverableContract: 3587584 bytes,
-  98F47746B032B9F5326083AB2C4BF6BB8F1567583F5FCC71757F56E121A0C7C0,
+  8986F1168578CF6B564229E3D80C12DC1E8809138B0786B38C8DD99B46E3BF9A,
   WindowsGui`, and `liteSizeGate: passed`. The earlier full default verifier
   evidence still covers Python inventory `98`, Python unittest `98`, frontend
   `103 passed`, frontend build `True`, and release build `True`.
@@ -1223,7 +1223,7 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   -SkipPython -SkipFrontend -SkipRelease` then passed with Rust core `124
   passed, 3 ignored`, Tauri shell/backend `91 passed, 16 ignored`, OCR feature
   `28 passed`, and the same final single-file deliverable hash
-  `98F47746B032B9F5326083AB2C4BF6BB8F1567583F5FCC71757F56E121A0C7C0`.
+  `8986F1168578CF6B564229E3D80C12DC1E8809138B0786B38C8DD99B46E3BF9A`.
 - After locking the app-window self-filter:
   `cargo test -p screen-watch-ocr-tauri window_sources` passed with the new
   test `app_window_filter_excludes_legacy_and_tauri_app_titles`, proving the

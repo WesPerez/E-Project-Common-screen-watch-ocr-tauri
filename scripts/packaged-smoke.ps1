@@ -1,6 +1,7 @@
 param(
     [string]$ExePath = "",
-    [int]$StartupWaitSeconds = 18
+    [int]$StartupWaitSeconds = 18,
+    [int]$CloseDelayMilliseconds = 750
 )
 
 $ErrorActionPreference = "Stop"
@@ -122,6 +123,15 @@ public static class ScreenWatchWindowProbe
 
     public static bool CloseFirstVisibleMainWindowForProcess(int processId, string expectedTitle)
     {
+        if (CloseFirstVisibleWindowForProcess(processId, expectedTitle, true))
+        {
+            return true;
+        }
+        return CloseFirstVisibleWindowForProcess(processId, expectedTitle, false);
+    }
+
+    private static bool CloseFirstVisibleWindowForProcess(int processId, string expectedTitle, bool exactTitleOnly)
+    {
         bool posted = false;
         EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
         {
@@ -132,7 +142,10 @@ public static class ScreenWatchWindowProbe
 
             uint ownerPid;
             GetWindowThreadProcessId(hWnd, out ownerPid);
-            if (ownerPid == processId && IsWindowVisible(hWnd) && IsMainWindow(hWnd, expectedTitle))
+            bool matches = exactTitleOnly
+                ? WindowTitle(hWnd) == expectedTitle
+                : IsMainWindow(hWnd, expectedTitle);
+            if (ownerPid == processId && IsWindowVisible(hWnd) && matches)
             {
                 posted = PostMessage(hWnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
                 return false;
@@ -560,13 +573,22 @@ try {
     $initialMainWindowInfos = Get-VisibleMainWindowInfos $closeProcess
     $legacyGeometryScale = Assert-MainWindowRestoredLegacyGeometry $initialMainWindowInfos[0]
 
+    if ($CloseDelayMilliseconds -gt 0) {
+        Start-Sleep -Milliseconds $CloseDelayMilliseconds
+    }
     if (-not [ScreenWatchWindowProbe]::CloseFirstVisibleMainWindowForProcess($closeProcess.Id, "Screen Watch OCR Tauri")) {
         throw "could not post WM_CLOSE to the packaged app main window"
     }
-    Wait-ForSmokeCondition "close-to-tray main window hiding" {
-        Assert-ProcessRunning $closeProcess "close-to-tray"
-        (Get-VisibleMainWindows $closeProcess).Count -eq 0
-    } $StartupWaitSeconds
+    try {
+        Wait-ForSmokeCondition "close-to-tray main window hiding" {
+            Assert-ProcessRunning $closeProcess "close-to-tray"
+            (Get-VisibleMainWindows $closeProcess).Count -eq 0
+        } $StartupWaitSeconds
+    } catch {
+        $remainingMainWindows = Get-VisibleMainWindows $closeProcess
+        $remainingTopLevelWindows = [ScreenWatchWindowProbe]::VisibleTopLevelWindowSummariesForProcess($closeProcess.Id)
+        throw "$($_.Exception.Message); remaining main windows: $($remainingMainWindows -join '; '); remaining top-level windows: $($remainingTopLevelWindows -join '; ')"
+    }
     $afterCloseMainWindows = Get-VisibleMainWindows $closeProcess
 
     Start-Sleep -Milliseconds 500
@@ -587,6 +609,7 @@ try {
     Write-Host "legacyGeometryMainWindowRect: $($initialMainWindowInfos[0].Width)x$($initialMainWindowInfos[0].Height)+$($initialMainWindowInfos[0].Left)+$($initialMainWindowInfos[0].Top)"
     Write-Host "legacyGeometryProbeScale: $legacyGeometryScale"
     Write-Host "legacyGeometryRestoreSmokeVerified: True"
+    Write-Host "closeDelayMilliseconds: $CloseDelayMilliseconds"
     Write-Host "isolatedCloseToTrayPort: $closeToTrayPort"
     Write-Host "closeToTrayAfterCloseVisibleMainWindows: $($afterCloseMainWindows.Count)"
     Write-Host "secondInstanceProcessId: $secondInstanceProcessId"

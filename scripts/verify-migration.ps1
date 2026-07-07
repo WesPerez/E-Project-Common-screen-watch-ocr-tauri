@@ -982,12 +982,12 @@ function Assert-AcceptanceCurrentStatusContract {
 
     foreach ($expected in @(
             "Current status snapshot as of",
-            "docs\VERIFICATION_RUN_20260707_1903.md",
+            "docs\VERIFICATION_RUN_20260707_1947.md",
             "docs\COMPARISON_AUDIT.md",
             "19 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete,",
             "release-single\ScreenWatchOCRTauri.exe",
             "3,587,584 bytes",
-            "98F47746B032B9F5326083AB2C4BF6BB8F1567583F5FCC71757F56E121A0C7C0",
+            "8986F1168578CF6B564229E3D80C12DC1E8809138B0786B38C8DD99B46E3BF9A",
             "Windows GUI subsystem",
             "## Remaining Validation Boundaries",
             "600-second soak",
@@ -2549,6 +2549,12 @@ function Assert-TrayMonitoringStatusContract {
 
     if (-not [regex]::IsMatch($traySource, "pub\s+fn\s+tray_monitoring_presentation\s*\(\s*monitoring:\s*bool\s*\)\s*->\s*TrayMonitoringPresentation")) {
         throw "Tray monitoring status contract must expose a testable presentation helper"
+    }
+
+    $preventCloseIndex = $traySource.IndexOf("api.prevent_close();")
+    $hideIndex = $traySource.IndexOf("let _ = window.hide();")
+    if ($preventCloseIndex -lt 0 -or $hideIndex -lt 0 -or $preventCloseIndex -gt $hideIndex) {
+        throw "Close-to-tray must prevent the close request before hiding the window"
     }
 }
 

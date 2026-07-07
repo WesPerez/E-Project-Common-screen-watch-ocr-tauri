@@ -131,9 +131,8 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent, state: &TrayLif
     if window.label() != "main" || !should_hide_close_to_tray(state.is_available()) {
         return;
     }
-    if window.hide().is_ok() {
-        api.prevent_close();
-    }
+    api.prevent_close();
+    let _ = window.hide();
 }
 
 pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
