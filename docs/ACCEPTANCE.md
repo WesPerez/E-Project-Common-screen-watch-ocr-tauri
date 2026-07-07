@@ -1187,6 +1187,13 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   invalid=0`; only the real OCR model smoke remains blocked by missing external
   model assets, and only the packaged tray menu/icon click smoke remains
   missing.
+- After refreshing the final packaged WebView2/CDP full smoke:
+  `node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe`
+  passed in `webview-visual-smoke-20260707-144242-result.json` with source
+  preview, legacy Python profile restore/scan/monitoring, template-gallery
+  PNG/JPG/JPEG/BMP/WebP path imports, clipboard bitmap and file-list paste,
+  one-shot scan evidence, monitoring start/stop/restart, and all layout
+  splitter drags in one final-exe run.
 - `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1 -SkipPython -SkipFrontend -SkipRelease`:
   passed after adding the production-profile template benchmark gate and
   verifier contract. The summary reported Rust core `117 passed, 3 ignored`,
