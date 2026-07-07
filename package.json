@@ -19,6 +19,7 @@
     "coexistence:smoke": "powershell -ExecutionPolicy Bypass -File scripts/coexistence-smoke.ps1",
     "python:profile:compat": "powershell -ExecutionPolicy Bypass -File scripts/python-profile-compat-smoke.ps1",
     "manual:evidence": "powershell -ExecutionPolicy Bypass -File scripts/manual-gate-evidence.ps1",
+    "evidence:references": "powershell -ExecutionPolicy Bypass -File scripts/evidence-reference-check.ps1",
     "webview:visual:smoke": "node scripts/webview-visual-smoke.mjs",
     "webview:clipboard:smoke": "node scripts/webview-visual-smoke.mjs --gate clipboard",
     "webview:scan:smoke": "node scripts/webview-visual-smoke.mjs --gate scan",

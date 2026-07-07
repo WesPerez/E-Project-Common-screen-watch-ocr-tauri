@@ -23,6 +23,7 @@ This record summarizes the continuation audit performed after commit
 | `npm run ocr:corpus:smoke` | Passed. External PP-OCRv5-style models recognized generated English and Chinese corpus cases: READY, ALERT 42, OCR TEST, SCAN COMPLETE, ERROR 100%, 准备好了, 开始监控, 屏幕监控, 发现异常. Result: `docs\manual-gate-evidence\logs\ocr-corpus-smoke-20260707-164827-result.json`. |
 | `npm run tray:smoke -- -ExePath .\release-single\ScreenWatchOCRTauri.exe` | Passed against the final single exe. Tauri PID `56444`; tray hidden window class `tray_icon_app`; Show menu PID `56444`; Exit menu PID `56444`; process exited with code `0`. |
 | `npm run coexistence:smoke -- -TauriExePath .\release-single\ScreenWatchOCRTauri.exe` | Passed against old packaged Python plus final Tauri single exe. Python process name `ScreenWatchOCR`, Tauri process name `ScreenWatchOCRTauri`; Python port `47627`, Tauri port `47628`; cross-protocol commands rejected both ways; own commands accepted; both second instances exited `0`; Tauri WebView2 children used the smoke-owned user data folder. Result: `docs\manual-gate-evidence\logs\coexistence-smoke-20260707-165344-result.json`. |
+| `npm run evidence:references` | Passed after correcting stale historical evidence wording. All parsed current local references to `docs\manual-gate-evidence\logs`, `target`, and `release-single\ScreenWatchOCRTauri.exe` exist, excluding intentionally historical `target\installer-smoke*` install roots. |
 
 ## Current Difference And Risk Audit
 
@@ -49,4 +50,3 @@ the delivered exe remain in ignored directories:
 - `release-single/`
 - `node_modules/`
 - `docs/manual-gate-evidence/logs/`
-
