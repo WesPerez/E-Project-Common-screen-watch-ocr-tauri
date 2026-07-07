@@ -861,6 +861,30 @@ mod tests {
         assert!(!statuses[1].exists);
     }
 
+    #[test]
+    fn rapidocr_v6_reference_models_do_not_satisfy_native_ppocrv5_profile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let model_dir = tmp.path().join("models");
+        fs::create_dir_all(&model_dir).unwrap();
+        for name in RAPIDOCR_V6_REFERENCE_MODELS {
+            fs::write(model_dir.join(name), b"model").unwrap();
+        }
+
+        let settings =
+            OcrSettings::from_sources(BuildFlavor::Full, tmp.path().to_path_buf(), Some(model_dir));
+        let availability = settings.availability();
+
+        assert!(!availability.models_ready);
+        assert!(!availability.available);
+        assert_eq!(availability.missing_models, REQUIRED_NATIVE_OCR_ASSETS);
+        assert!(availability
+            .reference_models
+            .iter()
+            .all(|model| model.exists));
+        assert_eq!(availability.model_profile, "ppocrv5-dbnet-svtr");
+        assert!(availability.reason.contains("native OCR assets missing"));
+    }
+
     #[cfg(feature = "ocr")]
     #[test]
     #[ignore = "requires real external OCR model assets"]

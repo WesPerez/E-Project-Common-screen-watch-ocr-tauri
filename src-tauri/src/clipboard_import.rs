@@ -26,17 +26,13 @@ fn read_clipboard_template_images_platform() -> Result<ClipboardTemplateImages, 
 {
     use windows::Win32::{
         System::{
-            DataExchange::{GetClipboardData, OpenClipboard},
+            DataExchange::GetClipboardData,
             Ole::{CF_DIB, CF_DIBV5, CF_HDROP},
         },
         UI::Shell::HDROP,
     };
 
-    unsafe {
-        OpenClipboard(None).map_err(|err| {
-            ClipboardImportError::Platform(format!("cannot open clipboard: {err}"))
-        })?;
-    }
+    open_clipboard_with_retry()?;
     let _guard = ClipboardGuard;
 
     let mut out = ClipboardTemplateImages::default();
@@ -76,6 +72,35 @@ impl Drop for ClipboardGuard {
             let _ = windows::Win32::System::DataExchange::CloseClipboard();
         }
     }
+}
+
+#[cfg(windows)]
+fn open_clipboard_with_retry() -> Result<(), ClipboardImportError> {
+    use std::{thread, time::Duration};
+    use windows::Win32::System::DataExchange::OpenClipboard;
+
+    const ATTEMPTS: usize = 12;
+    const RETRY_DELAY: Duration = Duration::from_millis(25);
+
+    let mut last_error = None;
+    for attempt in 0..ATTEMPTS {
+        match unsafe { OpenClipboard(None) } {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                last_error = Some(err);
+                if attempt + 1 < ATTEMPTS {
+                    thread::sleep(RETRY_DELAY);
+                }
+            }
+        }
+    }
+
+    Err(ClipboardImportError::Platform(format!(
+        "cannot open clipboard: {}",
+        last_error
+            .map(|err| err.to_string())
+            .unwrap_or_else(|| "unknown error".to_string())
+    )))
 }
 
 #[cfg(windows)]
