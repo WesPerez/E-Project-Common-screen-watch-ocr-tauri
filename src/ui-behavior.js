@@ -706,47 +706,17 @@ export function monitoringProgressLogText(snapshot = {}, options = {}) {
   const windowCount = countFromEitherCase(snapshot, "windowCount", "window_count");
   const parts = [
     `第 ${tickCount} 轮`,
-    `扫描 ${regionCount} 屏 / ${windowCount} 应用`,
-    `本轮命中 ${tickMatchCount}`,
-    `本轮报警 ${tickHitCount}`,
-    `本轮耗时 ${formatDurationMs(tickScanMs)}`,
-    `累计命中 ${hitCount}`,
+    `耗时 ${formatDurationMs(tickScanMs)}`,
+    `命中 ${tickMatchCount}`,
+    `报警 ${tickHitCount}`,
+    `累计 ${hitCount}`,
+    `来源 ${regionCount} 屏 / ${windowCount} 应用`,
   ];
   const tickError = String(options.tickError || options.tick_error || "").trim();
   if (tickError) {
-    parts.push(tickError);
+    parts.push(`错误: ${tickError}`);
   }
-  return parts.join("，");
-}
-
-export function monitoringHeartbeatLogText(snapshot = {}) {
-  const tickCount = countFromEitherCase(snapshot, "tickCount", "tick_count");
-  const hitCount = countFromEitherCase(snapshot, "hitCount", "hit_count");
-  const lastTickMatchCount = countFromEitherCase(
-    snapshot,
-    "lastTickMatchCount",
-    "last_tick_match_count",
-  );
-  const lastTickHitCount = countFromEitherCase(
-    snapshot,
-    "lastTickHitCount",
-    "last_tick_hit_count",
-  );
-  const lastTickScanMs = countFromEitherCase(
-    snapshot,
-    "lastTickScanMs",
-    "last_tick_scan_ms",
-  );
-  const regionCount = countFromEitherCase(snapshot, "regionCount", "region_count");
-  const windowCount = countFromEitherCase(snapshot, "windowCount", "window_count");
-  return [
-    `监控心跳：已完成 ${tickCount} 轮`,
-    `扫描 ${regionCount} 屏 / ${windowCount} 应用`,
-    `上一轮命中 ${lastTickMatchCount}`,
-    `上一轮报警 ${lastTickHitCount}`,
-    `上一轮耗时 ${formatDurationMs(lastTickScanMs)}`,
-    `累计命中 ${hitCount}`,
-  ].join("，");
+  return parts.join(" | ");
 }
 
 export function monitoringSessionGeneration(snapshot = {}) {

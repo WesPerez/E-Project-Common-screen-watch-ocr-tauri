@@ -19,7 +19,6 @@ import {
   layoutBusy,
   monitoringEventFreshness,
   monitoringEventTransition,
-  monitoringHeartbeatLogText,
   monitoringProgressLogText,
   monitoringSessionGeneration,
   monitoringStatusText,
@@ -87,7 +86,6 @@ let selectedTargetIndex = null;
 let targetLastClick = {};
 let monitorHeartbeatTimer = null;
 let monitorHeartbeatLastTick = null;
-let monitorHeartbeatLastWaitingLog = 0;
 let monitorProgressLogLastTick = null;
 let monitorProgressLogLastAt = 0;
 let monitoringOperationPending = "";
@@ -318,7 +316,6 @@ function trackMonitoringHeartbeat(payload) {
   }
   if (kind === "tick") {
     monitorHeartbeatLastTick = monitorTickCount(snapshot);
-    monitorHeartbeatLastWaitingLog = Date.now();
   }
   if (monitoringActive || kind === "started") {
     startMonitoringHeartbeat(snapshot);
@@ -327,7 +324,6 @@ function trackMonitoringHeartbeat(payload) {
 
 function startMonitoringHeartbeat(snapshot = {}) {
   monitorHeartbeatLastTick = monitorTickCount(snapshot);
-  monitorHeartbeatLastWaitingLog = 0;
   if (monitorHeartbeatTimer) {
     return;
   }
@@ -348,7 +344,6 @@ function stopMonitoringHeartbeat() {
   window.clearInterval(monitorHeartbeatTimer);
   monitorHeartbeatTimer = null;
   monitorHeartbeatLastTick = null;
-  monitorHeartbeatLastWaitingLog = 0;
   monitorHeartbeatPolling = false;
 }
 
@@ -376,16 +371,6 @@ function appendMonitoringProgressLog(snapshot = {}, payload = {}, options = {}) 
   monitorProgressLogLastTick = tickCount;
   monitorProgressLogLastAt = now;
   appendLog(monitoringProgressLogText(snapshot, payload));
-  return true;
-}
-
-function appendMonitoringHeartbeatLog(snapshot = {}, options = {}) {
-  const now = Date.now();
-  if (!options.force && now - monitorHeartbeatLastWaitingLog < MONITOR_HEARTBEAT_MS - 50) {
-    return false;
-  }
-  monitorHeartbeatLastWaitingLog = now;
-  appendLog(monitoringHeartbeatLogText(snapshot));
   return true;
 }
 
@@ -432,14 +417,11 @@ async function pollMonitoringHeartbeat() {
       return;
     }
     const tickCount = monitorTickCount(session);
-    const now = Date.now();
     if (tickCount !== monitorHeartbeatLastTick) {
       monitorHeartbeatLastTick = tickCount;
-      monitorHeartbeatLastWaitingLog = now;
       appendMonitoringProgressLog(session, {}, { forceFirst: true });
       return;
     }
-    appendMonitoringHeartbeatLog(session);
   } catch (error) {
     if (generation === monitoringUiGeneration) {
       status.textContent = String(error);
@@ -1665,7 +1647,6 @@ async function startMonitoring() {
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     appendLog("监控中");
-    appendMonitoringHeartbeatLog(session, { force: true });
     updateRunControls();
   } catch (error) {
     result.textContent = String(error);
@@ -2524,7 +2505,6 @@ async function startProfileMonitoring() {
     result.textContent = JSON.stringify(session, null, 2);
     status.textContent = monitoringStatusText(session);
     appendLog("监控中");
-    appendMonitoringHeartbeatLog(session, { force: true });
     updateRunControls();
   } catch (error) {
     const message = monitoringStartErrorText(error);

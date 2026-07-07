@@ -2908,8 +2908,27 @@ mod tests {
             extra: Map::new(),
         };
         let expected_ids = template_target_ids(&config.targets);
-        let mut frame = synthetic_background(frame_width, frame_height);
-        let placements = place_production_templates(&mut frame, &config.targets, &data_dir);
+        let frame_path = std::env::var("SCREENWATCH_PRODUCTION_FRAME_PATH")
+            .ok()
+            .map(PathBuf::from);
+        let (frame, frame_label, placements) = if let Some(frame_path) = frame_path {
+            let frame = RgbFrame::from_image_path(&frame_path).unwrap_or_else(|err| {
+                panic!(
+                    "failed to load production benchmark frame {}: {err}",
+                    frame_path.display()
+                )
+            });
+            let frame_label = format!("{}x{}@{}", frame.width, frame.height, frame_path.display());
+            (frame, frame_label, "external-frame".to_string())
+        } else {
+            let mut frame = synthetic_background(frame_width, frame_height);
+            let placements = place_production_templates(&mut frame, &config.targets, &data_dir);
+            (
+                frame,
+                format!("{}x{}", frame_width, frame_height),
+                placements,
+            )
+        };
 
         let detector = PreparedDetector::from_config(&config, &data_dir).unwrap();
         let started = Instant::now();
@@ -2921,14 +2940,15 @@ mod tests {
             .collect::<Vec<_>>();
         actual_ids.sort();
 
-        assert_eq!(matches.len(), expected_ids.len(), "{matches:#?}");
-        assert_eq!(actual_ids, expected_ids);
+        if placements != "external-frame" {
+            assert_eq!(matches.len(), expected_ids.len(), "{matches:#?}");
+            assert_eq!(actual_ids, expected_ids);
+        }
 
         println!(
-            "productionTemplateBenchmarkMs={} frame={}x{} profile={} dataDir={} rawTargets={} enabledTargets={} templateTargets={} templateWorkers={} threshold={:.2} scales={} matches={} placements={}",
+            "productionTemplateBenchmarkMs={} frame={} profile={} dataDir={} rawTargets={} enabledTargets={} templateTargets={} templateWorkers={} threshold={:.2} scales={} matches={} placements={}",
             elapsed_ms,
-            frame_width,
-            frame_height,
+            frame_label,
             profile_path.display(),
             data_dir.display(),
             raw_targets.len(),

@@ -25,7 +25,6 @@ import {
   monitorErrorSummary,
   monitoringEventFreshness,
   monitoringEventTransition,
-  monitoringHeartbeatLogText,
   monitoringProgressLogText,
   monitoringSessionGeneration,
   monitoringStatusText,
@@ -1169,7 +1168,7 @@ test("monitoring status prefers current tick error text", () => {
   assert.equal(status, "监控中，错误: new capture error");
 });
 
-test("monitoring progress log text reports heartbeat tick details", () => {
+test("monitoring progress log text reports one compact scan round", () => {
   assert.equal(
     monitoringProgressLogText(
       {
@@ -1185,7 +1184,7 @@ test("monitoring progress log text reports heartbeat tick details", () => {
         tickScanMs: 842,
       },
     ),
-    "第 8 轮，扫描 2 屏 / 1 应用，本轮命中 5，本轮报警 3，本轮耗时 842ms，累计命中 12，capture failed",
+    "第 8 轮 | 耗时 842ms | 命中 5 | 报警 3 | 累计 12 | 来源 2 屏 / 1 应用 | 错误: capture failed",
   );
 });
 
@@ -1200,22 +1199,7 @@ test("monitoring progress log text falls back to last tick snapshot fields", () 
       tick_count: 8,
       window_count: 1,
     }),
-    "第 8 轮，扫描 2 屏 / 1 应用，本轮命中 4，本轮报警 1，本轮耗时 1.53s，累计命中 12",
-  );
-});
-
-test("monitoring heartbeat log text reports running status without a new tick", () => {
-  assert.equal(
-    monitoringHeartbeatLogText({
-      hitCount: 4,
-      lastTickHitCount: 1,
-      lastTickMatchCount: 6,
-      lastTickScanMs: 1204,
-      regionCount: 1,
-      tickCount: 0,
-      windowCount: 2,
-    }),
-    "监控心跳：已完成 0 轮，扫描 1 屏 / 2 应用，上一轮命中 6，上一轮报警 1，上一轮耗时 1.20s，累计命中 4",
+    "第 8 轮 | 耗时 1.53s | 命中 4 | 报警 1 | 累计 12 | 来源 2 屏 / 1 应用",
   );
 });
 

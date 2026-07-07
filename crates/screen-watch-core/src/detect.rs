@@ -15,11 +15,16 @@ const COARSE_AREA: u64 = 1280 * 720;
 const QUARTER_AREA: u64 = 1920 * 1080;
 const COARSE_CANDIDATES: usize = 3;
 const LARGE_TEXTURED_COARSE_CANDIDATES: usize = 3;
-const TEXTURED_COARSE_CANDIDATES: usize = 8;
+const TEXTURED_COARSE_CANDIDATES: usize = 5;
 const COARSE_CANDIDATE_POOL_MULTIPLIER: usize = 8;
 const LARGE_COARSE_TEMPLATE_AREA: u64 = 1024;
+const COARSE_REFINE_MIN_THRESHOLD: f32 = 0.75;
+const COARSE_REFINE_SCORE_FLOOR: f32 = 0.55;
+const COARSE_REFINE_SCORE_MARGIN: f32 = 0.35;
+const SPARSE_REFINE_TEMPLATE_AREA: u64 = 1024;
+const SPARSE_REFINE_CANDIDATES: usize = 32;
 const REFINE_MARGIN: u32 = 16;
-const EXACT_GRAY_MAX_POSITIONS: u64 = 250_000;
+const EXACT_GRAY_MAX_POSITIONS: u64 = 100_000;
 const PERFECT_SCORE_THRESHOLD: f32 = 1.0 - 1e-6;
 
 #[derive(Debug, Error)]
@@ -596,7 +601,10 @@ pub fn detect_template_scaled(
     threshold: f32,
     scales: &[f64],
 ) -> Option<Match> {
-    let hit = find_template_scaled(frame, template, scales)?;
+    let base_template = GrayFrame::from_rgb(template);
+    let frame_cache = GrayFrameCache::from_rgb(frame);
+    let hit =
+        find_template_scaled_with_cache(&frame_cache, &base_template, scales, Some(threshold))?;
     if hit.score < threshold {
         return None;
     }
@@ -621,13 +629,14 @@ pub fn find_template_scaled(
     }
     let base_template = GrayFrame::from_rgb(template);
     let frame_cache = GrayFrameCache::from_rgb(frame);
-    find_template_scaled_with_cache(&frame_cache, &base_template, scales)
+    find_template_scaled_with_cache(&frame_cache, &base_template, scales, None)
 }
 
 fn find_template_scaled_with_cache(
     frame_cache: &GrayFrameCache,
     base_template: &GrayFrame,
     scales: &[f64],
+    threshold: Option<f32>,
 ) -> Option<TemplateMatch> {
     let mut best: Option<TemplateMatch> = None;
     for scale in scales {
@@ -635,10 +644,12 @@ fn find_template_scaled_with_cache(
             continue;
         }
         let scaled_template = base_template.resize_by(*scale)?;
-        let hit = find_template_best_gray_adaptive(frame_cache, &scaled_template).map(|mut hit| {
-            hit.scale = (*scale * 1_000_000.0).round() / 1_000_000.0;
-            hit
-        });
+        let hit = find_template_best_gray_adaptive(frame_cache, &scaled_template, threshold).map(
+            |mut hit| {
+                hit.scale = (*scale * 1_000_000.0).round() / 1_000_000.0;
+                hit
+            },
+        );
         if let Some(hit) = hit {
             if best
                 .as_ref()
@@ -773,7 +784,7 @@ fn detect_prepared_template(
     };
     let trace = std::env::var_os("SCREENWATCH_TEMPLATE_TRACE").is_some();
     let started = trace.then(Instant::now);
-    let hit = find_template_scaled_with_cache(frame_cache, template, scales);
+    let hit = find_template_scaled_with_cache(frame_cache, template, scales, Some(*threshold));
     if let Some(started) = started {
         let score = hit.as_ref().map(|item| item.score).unwrap_or(-1.0);
         eprintln!(
@@ -802,6 +813,7 @@ fn detect_prepared_template(
 fn find_template_best_gray_adaptive(
     frame_cache: &GrayFrameCache,
     template: &GrayFrame,
+    threshold: Option<f32>,
 ) -> Option<TemplateMatch> {
     let frame = frame_cache.full();
     if should_try_exact_gray(frame, template) {
@@ -848,6 +860,7 @@ fn find_template_best_gray_adaptive(
 
     let mut best: Option<TemplateMatch> = None;
     let coarse_integral = frame_cache.integral_for_factor(factor);
+    let min_refine_score = coarse_refine_min_score(threshold);
     for coarse_template in &coarse_templates {
         if coarse_template.frame.width == 0
             || coarse_template.frame.height == 0
@@ -871,10 +884,16 @@ fn find_template_best_gray_adaptive(
             candidate_limit,
             coarse_integral,
         ) {
+            if min_refine_score
+                .map(|minimum| loc.score < minimum)
+                .unwrap_or(false)
+            {
+                continue;
+            }
             if let Some(hit) = refine_template_match(
                 frame,
                 template,
-                loc,
+                (loc.x, loc.y),
                 factor,
                 coarse_template.phase_x,
                 coarse_template.phase_y,
@@ -905,6 +924,18 @@ fn should_try_exact_gray(frame: &GrayFrame, template: &GrayFrame) -> bool {
     true
 }
 
+fn coarse_refine_min_score(threshold: Option<f32>) -> Option<f32> {
+    let threshold = threshold?;
+    if !threshold.is_finite() || threshold < COARSE_REFINE_MIN_THRESHOLD {
+        return None;
+    }
+    Some(
+        (threshold - COARSE_REFINE_SCORE_MARGIN)
+            .max(COARSE_REFINE_SCORE_FLOOR)
+            .min(threshold),
+    )
+}
+
 #[cfg(test)]
 fn find_template_exact_gray(frame: &GrayFrame, template: &GrayFrame) -> Option<TemplateMatch> {
     find_template_exact_gray_bounded(frame, template, u64::MAX)
@@ -928,10 +959,74 @@ fn find_template_exact_gray_bounded(
     let samples = exact_match_samples(template);
     let max_x = frame.width - template.width;
     let max_y = frame.height - template.height;
+    find_template_exact_gray_in_bounds(
+        frame,
+        template,
+        &anchor,
+        &samples,
+        0,
+        0,
+        max_x,
+        max_y,
+        max_positions,
+    )
+}
+
+fn find_template_exact_gray_in_region(
+    frame: &GrayFrame,
+    template: &GrayFrame,
+    left: u32,
+    top: u32,
+    right: u32,
+    bottom: u32,
+) -> Option<TemplateMatch> {
+    if template.width == 0
+        || template.height == 0
+        || template.width > frame.width
+        || template.height > frame.height
+        || right > frame.width
+        || bottom > frame.height
+        || right < left.saturating_add(template.width)
+        || bottom < top.saturating_add(template.height)
+    {
+        return None;
+    }
+    let anchor = exact_match_anchor(template)?;
+    let samples = exact_match_samples(template);
+    let max_x = right - template.width;
+    let max_y = bottom - template.height;
+    find_template_exact_gray_in_bounds(
+        frame,
+        template,
+        &anchor,
+        &samples,
+        left,
+        top,
+        max_x,
+        max_y,
+        u64::MAX,
+    )
+}
+
+fn find_template_exact_gray_in_bounds(
+    frame: &GrayFrame,
+    template: &GrayFrame,
+    anchor: &ExactGrayAnchor,
+    samples: &[(u32, u32, f32)],
+    left: u32,
+    top: u32,
+    max_x: u32,
+    max_y: u32,
+    max_positions: u64,
+) -> Option<TemplateMatch> {
+    if max_x < left || max_y < top || max_positions == 0 {
+        return None;
+    }
     let scan_width = max_x as usize + 1;
     let mut scanned_positions = 0u64;
-    for y in 0..=max_y {
-        let row_start = ((y + anchor.y) * frame.width + anchor.x) as usize;
+    let scan_width = scan_width.saturating_sub(left as usize);
+    for y in top..=max_y {
+        let row_start = ((y + anchor.y) * frame.width + left + anchor.x) as usize;
         let row = &frame.pixels[row_start..row_start + scan_width];
         'candidate: for (x_offset, value) in row.iter().enumerate() {
             if scanned_positions >= max_positions {
@@ -941,8 +1036,8 @@ fn find_template_exact_gray_bounded(
             if *value != anchor.value {
                 continue;
             }
-            let x = x_offset as u32;
-            for (sample_x, sample_y, value) in &samples {
+            let x = left + x_offset as u32;
+            for (sample_x, sample_y, value) in samples {
                 if frame.pixel(x + *sample_x, y + *sample_y) != *value {
                     continue 'candidate;
                 }
@@ -1071,7 +1166,7 @@ fn candidate_locs(
     template: &GrayFrame,
     limit: usize,
     cached_integral: Option<&GrayFrameIntegral>,
-) -> Vec<(u32, u32)> {
+) -> Vec<CandidateLoc> {
     if limit == 0
         || template.width == 0
         || template.height == 0
@@ -1129,7 +1224,7 @@ fn candidate_locs(
                 )
             };
             if template_flat && score >= PERFECT_SCORE_THRESHOLD {
-                return vec![(x, y)];
+                return vec![CandidateLoc { score, x, y }];
             }
             if pool.len() < pool_limit {
                 pool.push(CandidateLoc { score, x, y });
@@ -1147,14 +1242,14 @@ fn candidate_locs(
 
     let mut suppressed = Vec::<(u32, u32, u32, u32)>::new();
     let mut locs = Vec::new();
-    for CandidateLoc { x, y, .. } in pool {
+    for CandidateLoc { score, x, y } in pool {
         if suppressed
             .iter()
             .any(|(x1, y1, x2, y2)| x >= *x1 && x < *x2 && y >= *y1 && y < *y2)
         {
             continue;
         }
-        locs.push((x, y));
+        locs.push(CandidateLoc { score, x, y });
         if locs.len() >= limit {
             break;
         }
@@ -1483,6 +1578,27 @@ fn find_template_best_gray_in_region_cached(
             value,
         )
     });
+    if !template_flat {
+        if let Some(hit) =
+            find_template_exact_gray_in_region(frame, template, left, top, right, bottom)
+        {
+            return Some(hit);
+        }
+        if should_use_sparse_refine(template, left, top, right, bottom) {
+            if let Some(hit) = find_template_best_gray_in_region_sparse_refine(
+                frame,
+                template,
+                left,
+                top,
+                right,
+                bottom,
+                template_stats,
+                integral,
+            ) {
+                return Some(hit);
+            }
+        }
+    }
     let mut best: Option<TemplateMatch> = None;
     let max_x = right - template.width;
     let max_y = bottom - template.height;
@@ -1519,6 +1635,81 @@ fn find_template_best_gray_in_region_cached(
                     scale: 1.0,
                 });
             }
+        }
+    }
+    best
+}
+
+fn should_use_sparse_refine(
+    template: &GrayFrame,
+    left: u32,
+    top: u32,
+    right: u32,
+    bottom: u32,
+) -> bool {
+    let area = u64::from(template.width) * u64::from(template.height);
+    if area < SPARSE_REFINE_TEMPLATE_AREA
+        || right < left.saturating_add(template.width)
+        || bottom < top.saturating_add(template.height)
+    {
+        return false;
+    }
+    let positions = u64::from(right - left - template.width + 1)
+        * u64::from(bottom - top - template.height + 1);
+    positions > SPARSE_REFINE_CANDIDATES as u64
+}
+
+fn find_template_best_gray_in_region_sparse_refine(
+    frame: &GrayFrame,
+    template: &GrayFrame,
+    left: u32,
+    top: u32,
+    right: u32,
+    bottom: u32,
+    template_stats: (f32, f32),
+    integral: Option<&GrayFrameIntegral>,
+) -> Option<TemplateMatch> {
+    let samples = SparseTemplateSamples::from_template(template)?;
+    let max_x = right - template.width;
+    let max_y = bottom - template.height;
+    let mut pool = BinaryHeap::<CandidateLoc>::with_capacity(SPARSE_REFINE_CANDIDATES);
+    for y in top..=max_y {
+        for x in left..=max_x {
+            let score = samples.score_at(frame, x, y);
+            if pool.len() < SPARSE_REFINE_CANDIDATES {
+                pool.push(CandidateLoc { score, x, y });
+                continue;
+            }
+            if let Some(mut worst) = pool.peek_mut() {
+                if score > worst.score {
+                    *worst = CandidateLoc { score, x, y };
+                }
+            }
+        }
+    }
+    let mut candidates = pool.into_vec();
+    candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
+
+    let mut best: Option<TemplateMatch> = None;
+    for CandidateLoc { x, y, .. } in candidates {
+        let score = normalized_cross_correlation(frame, template, template_stats, x, y, integral);
+        if score >= PERFECT_SCORE_THRESHOLD {
+            return Some(TemplateMatch {
+                score,
+                box_xyxy: [x, y, x + template.width, y + template.height],
+                scale: 1.0,
+            });
+        }
+        if best
+            .as_ref()
+            .map(|current| score > current.score)
+            .unwrap_or(true)
+        {
+            best = Some(TemplateMatch {
+                score,
+                box_xyxy: [x, y, x + template.width, y + template.height],
+                scale: 1.0,
+            });
         }
     }
     best
