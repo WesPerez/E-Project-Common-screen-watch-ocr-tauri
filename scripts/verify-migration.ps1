@@ -576,6 +576,7 @@ function Assert-PackageScriptContract {
         "build" = "vite build"
         "test:frontend" = "node --test src/*.test.js"
         "audit:feature-surface" = "node scripts/feature-surface-audit.mjs"
+        "audit:python-baseline-coverage" = "node scripts/python-baseline-coverage-audit.mjs"
         "verify:migration" = "powershell -ExecutionPolicy Bypass -File scripts/verify-migration.ps1"
         "ocr:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-smoke.ps1"
         "ocr:corpus:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-corpus-smoke.ps1"
@@ -619,6 +620,7 @@ function Assert-PackageScriptContract {
     foreach ($scriptPath in @(
             "scripts\verify-migration.ps1",
             "scripts\feature-surface-audit.mjs",
+            "scripts\python-baseline-coverage-audit.mjs",
             "scripts\ocr-smoke.ps1",
             "scripts\ocr-corpus-smoke.ps1",
             "scripts\ocr-text-parity-smoke.ps1",
@@ -2668,6 +2670,7 @@ $summary = [ordered]@{
     legacyVisibleWorkflowContract = $null
     legacyUiSurfaceContract = $null
     featureSurfaceAudit = $null
+    pythonBaselineCoverageAudit = $null
     legacyDefaultSettingsContract = $null
     legacyFailureGuardContract = $null
     legacyTemplateFileBoundaryContract = $null
@@ -3030,6 +3033,13 @@ Invoke-CapturedStep `
     -Script { node scripts\feature-surface-audit.mjs $PythonProjectPath } `
     -SuppressOutput | Out-Null
 $summary.featureSurfaceAudit = "passed"
+
+Invoke-CapturedStep `
+    -Name "Python baseline coverage audit" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { node scripts\python-baseline-coverage-audit.mjs $PythonProjectPath } `
+    -SuppressOutput | Out-Null
+$summary.pythonBaselineCoverageAudit = "passed"
 
 Invoke-CapturedStep `
     -Name "Legacy default settings contract" `
