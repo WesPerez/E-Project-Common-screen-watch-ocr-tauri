@@ -95,6 +95,10 @@ function Get-ManualGateDefinitions {
             Title = "Packaged Python Tauri Coexistence Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "python-read-tauri-profile-compat-smoke"
+            Title = "Python Read Tauri Profile Compat Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "installer-repeatability-smoke"
             Title = "Installer Repeatability Smoke"
         },

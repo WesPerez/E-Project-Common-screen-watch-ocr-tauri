@@ -569,6 +569,7 @@ function Assert-PackageScriptContract {
         "template:parity" = "powershell -ExecutionPolicy Bypass -File scripts/template-parity-benchmark.ps1"
         "production:template:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/production-template-performance-smoke.ps1"
         "packaged:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/packaged-smoke.ps1"
+        "python:profile:compat" = "powershell -ExecutionPolicy Bypass -File scripts/python-profile-compat-smoke.ps1"
         "manual:evidence" = "powershell -ExecutionPolicy Bypass -File scripts/manual-gate-evidence.ps1"
         "webview:visual:smoke" = "node scripts/webview-visual-smoke.mjs"
         "webview:monitoring:smoke" = "node scripts/webview-visual-smoke.mjs --gate monitoring"
@@ -602,6 +603,7 @@ function Assert-PackageScriptContract {
             "scripts\template-parity-benchmark.ps1",
             "scripts\production-template-performance-smoke.ps1",
             "scripts\packaged-smoke.ps1",
+            "scripts\python-profile-compat-smoke.ps1",
             "scripts\manual-gate-evidence.ps1",
             "scripts\webview-visual-smoke.mjs",
             "scripts\package-portable.ps1",
@@ -933,6 +935,7 @@ function Assert-ManualGateRunbookContract {
             "## Profile One Shot Scan Smoke",
             "## Legacy Profile End-to-End Smoke",
             "## Legacy Late-Start Window End-to-End Smoke",
+            "## Python Read Tauri Profile Compat Smoke",
             "## Profile Monitoring Restart Smoke",
             "## Profile Monitoring Soak Smoke",
             "## WebView Layout Resize Smoke",
@@ -957,6 +960,7 @@ function Assert-ManualGateRunbookContract {
             'npm run webview:scan:smoke',
             'npm run webview:legacy-profile:smoke',
             'npm run webview:legacy-late-window:smoke',
+            'npm run python:profile:compat',
             'npm run webview:monitoring:smoke',
             'npm run webview:monitoring:soak',
             'npm run webview:monitoring:soak -- --soak-ms 30000',
@@ -985,6 +989,8 @@ function Assert-ManualGateRunbookContract {
             'alerts.jsonl plus screenshot evidence',
             'Python-shaped profile_1.json',
             'late-start remembered app window',
+            'Tauri-shaped `profile_1.json`',
+            'unknown future fields survived old Python save',
             'start/stop/restart monitoring',
             'target/settings splitter',
             'packagedSmokeVerified: True',
@@ -1648,6 +1654,7 @@ function Assert-LegacyProfilePersistenceContract {
 
     $pythonSource = Get-Content -LiteralPath (Join-Path $PythonProjectPath "src\screen_watch\app.py") -Raw
     $profileSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "crates\screen-watch-core\src\profile.rs") -Raw
+    $pythonCompatSmokeSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "scripts\python-profile-compat-smoke.ps1") -Raw
     $frontendBehaviorSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.js") -Raw
     $frontendTestSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.test.js") -Raw
 
@@ -1703,6 +1710,18 @@ function Assert-LegacyProfilePersistenceContract {
     }
     Assert-TextContains "frontend profile region persistence contract" $frontendBehaviorSource "profileRegion: normalizedRegion(state.region)"
     Assert-TextContains "frontend window-only region persistence test" $frontendTestSource "profile source options keep region inputs even without selected monitors"
+
+    foreach ($expected in @(
+            'future_profile_preserved_after_python_save',
+            'future_match_preserved_after_python_save',
+            'future_state_preserved_after_python_save',
+            'future_layout_preserved_after_python_save',
+            'assert loaded["selected_apps"] == [{"title": "Tauri Compatibility Window", "ordinal": 2}], loaded',
+            'assert saved["profile_has_required_keys"], saved_profile',
+            'assert saved["state_has_required_keys"], saved_state'
+        )) {
+        Assert-TextContains "Python read Tauri profile compatibility smoke contract" $pythonCompatSmokeSource $expected
+    }
 }
 
 function Assert-AudioAlarmParityContract {
@@ -1953,7 +1972,7 @@ function Assert-SingleFileDeliverableContract {
     Assert-TextContains `
         "comparison audit manual evidence status" `
         $audit `
-        "| Manual evidence status | 17 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |"
+        "| Manual evidence status | 18 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |"
 
     return "$($exeItem.Length) bytes, $sha256, WindowsGui"
 }

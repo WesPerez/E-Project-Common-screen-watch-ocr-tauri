@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 12:15 +08:00
+Last updated: 2026-07-07 12:25 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -57,6 +57,7 @@ Everything else is separated so old and new processes do not collide:
 | Packaged smoke | Current rerun against final SHA-256 `426BE3C...` verified PE subsystem WindowsGui (2), start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/ports using `release-single\ScreenWatchOCRTauri.exe` |
 | Tray menu smoke | Current rerun against final SHA-256 `426BE3C...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`; tray menu PID matched the Tauri PID, exit code was 0, and old Python tray/processes were not touched |
 | Python/Tauri coexistence smoke | final SHA-256 `426BE3C...` and old Python SHA-256 `A5689E...` were launched together against one shared isolated `ScreenWatchOCR` data root. Process trees were distinct (`ScreenWatchOCR` PyInstaller onefile tree vs `ScreenWatchOCRTauri` plus WebView2 tree), both visible main windows were detected, default ports `47627` and `47628` were simultaneously busy, cross-protocol commands were rejected both ways, each app acknowledged only its own command, each second instance exited 0, and Tauri WebView2 children used a smoke-owned user data folder |
+| Python-read-Tauri profile compatibility smoke | old Python source app loaded a Tauri-shaped `profile_1.json`, `state.json`, and template PNG from an isolated shared `ScreenWatchOCR` data root, then saved once. Required loaded fields matched the fixture, required profile/state keys remained after Python save, and the smoke records the old-Python boundary that unknown future top-level profile, match, state, and layout fields are dropped by Python save |
 | WebView visual smoke | Current rerun explicitly launched final SHA-256 `426BE3C...` through `--exe-path .\release-single\ScreenWatchOCRTauri.exe` and passed source preview, template gallery, clipboard paste, one-shot scan, monitoring restart, layout resize, and legacy profile in packaged WebView2 runs. A fresh dedicated late-start remembered-window rerun also loaded a Python-shaped profile while the remembered app was absent, reported `skippedWindowApps=1`, then scanned and monitored with positive hits after the app appeared without refreshing or reselecting |
 | WebView monitoring soak | final SHA-256 `426BE3C...` was explicitly launched through `--exe-path .\release-single\ScreenWatchOCRTauri.exe` and ran profile monitoring for 300,000ms with 150 UI samples, tick delta 562, hit delta 281, progress-log delta 47, and stopped with the button restored to `开始监控` |
 | WebView2 runtime boundary | Local read-only runtime audit found Microsoft Edge WebView2 Runtime `149.0.4022.98`; Tauri official docs confirm WebView2 is preinstalled on Windows 11 and installer-handled on older Windows versions | Final single-exe smoke proves this machine and other WebView2-present Windows machines; it does not prove machines where WebView2 has been removed or was never installed |
@@ -65,7 +66,7 @@ Everything else is separated so old and new processes do not collide:
 | Template benchmark | 2560x1440, 8 templates current rerun: Rust flat 76ms 8/8, Rust textured 452ms 8/8; Python/OpenCV flat 46ms 8/8, Python/OpenCV textured 45ms with the known 4/8 odd-phase baseline miss |
 | Production template smoke | profile_1 real templates current rerun: 18/18 matched on 2560x1440 synthetic placement; 6445ms recorded with threshold 0.90, scales 1.0, and template_workers 2 |
 | Real OCR smoke | Current rerun passed with external PP-OCRv5 English models recognizing READY and external PP-OCRv5 Chinese models recognizing a generated `准备好了` PNG through `cargo test --features ocr`; `npm run ocr:text:parity` compared old Python `Detector._ocr` supplied-row semantics against Rust OCR text detection/ScanEngine tests, and `npm run ocr:corpus:smoke` recognized READY, ALERT 42, OCR TEST, 准备好了, and 开始监控 generated PNGs |
-| Manual evidence status | 17 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |
+| Manual evidence status | 18 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |
 
 ## Feature Matrix
 
@@ -84,7 +85,7 @@ Everything else is separated so old and new processes do not collide:
 | OCR target detection | Partially proven | text-row core tests, Python-vs-Rust OCR text parity smoke, current real PP-OCRv5 English READY and Chinese `准备` recognition smokes | PP-OCRv6/RapidOCR-native compatibility, broad OCR quality, and varied real screenshots remain future validation items |
 | Screen source listing, mss-style monitor indexes, and region persistence | Proven | desktop monitor-listing smoke, frontend `profileRegion` test, core window-only profile save test | Exotic multi-monitor DPI/topology combinations still need spot checks |
 | App-window listing, duplicate ordinals, remembered apps | Proven | window source tests, desktop remembered-window gates | Apps that refuse capture remain an OS/window limitation |
-| Existing Python profile/template/state compatibility | Proven | core profile preservation tests, packaged migration smoke, legacy profile WebView end-to-end smoke, legacy late-start remembered-app WebView smoke | None known for generated present-at-startup or late-start remembered app-window workflows |
+| Existing Python profile/template/state compatibility | Proven | core profile preservation tests, packaged migration smoke, legacy profile WebView end-to-end smoke, legacy late-start remembered-app WebView smoke, Python-read-Tauri profile compatibility smoke | Tauri preserves unknown profile/state fields in the current contract; old Python can read required Tauri-shaped fields, but old Python save drops unknown future top-level/match/state/layout fields |
 | Screen capture and one-shot scan evidence | Proven | desktop screen capture and one-shot scan gates; packaged WebView profile one-shot scan smoke drives the visible `扫描一次` button and verifies hit/evidence/profile updates | None known for current generated screen/window sources |
 | Window capture with black PrintWindow fallback | Proven | capture tests and desktop window gates | Some GPU/minimized windows may still be uninspectable |
 | Source preview with DWM handoff and bitmap fallback | Proven | source-preview tests, real DWM gate, WebView visual smoke | Every third-party window class is not exhaustively covered |
@@ -130,7 +131,8 @@ future validation item.
 For adding future features, keep these guardrails:
 
 - Do not change shared profile/state/template file shapes without adding a
-  Python-compatibility test.
+  Python-compatibility test, and do not rely on old Python to preserve future
+  unknown fields outside the target records it already carries through.
 - Do not reuse Python process names, startup link names, tray identities, or
   single-instance ports.
 - Keep OCR models external to avoid turning the lite app back into a large

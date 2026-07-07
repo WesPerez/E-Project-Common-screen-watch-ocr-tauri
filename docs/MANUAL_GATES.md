@@ -82,8 +82,9 @@ Expected evidence:
 - `requiredRealGates: 19 workspace gates, 2 OCR gates`.
 - `manualGateEvidenceStatus:` includes the profile clipboard paste, profile
   one-shot scan, legacy profile end-to-end, legacy late-start window, profile
-  monitoring restart, profile monitoring soak, and WebView layout resize gates
-  plus packaged app and packaged tray gates when validating final evidence.
+  monitoring restart, profile monitoring soak, Python-read-Tauri profile
+  compatibility, and WebView layout resize gates plus packaged app and packaged
+  tray gates when validating final evidence.
 
 ## Desktop Backend Smoke
 
@@ -373,6 +374,31 @@ Expected evidence:
   remains false before the successful scan/monitoring path.
 - alerts.jsonl plus screenshot evidence written under the isolated
   `ScreenWatchOCR` data directory.
+
+## Python Read Tauri Profile Compat Smoke
+
+Repeatable automated evidence can be collected through the old Python source
+app without using production app data:
+
+```powershell
+npm run python:profile:compat
+```
+
+Expected evidence:
+
+- Result JSON proving old Python loaded a Tauri-shaped `profile_1.json`,
+  `state.json`, and generated template PNG from an isolated `ScreenWatchOCR`
+  data root.
+- Loaded fields include region, match settings, `max_alerts`, target enabled
+  state, target `hit_count`, remembered app-window ordinal, and selected
+  monitor state.
+- After `save_current_profile()` and `save_state()`, required profile keys
+  `targets`, `monitors`, `windows`, `region`, and `match` remain present, and
+  required state keys `last_profile`, `layout`, and `max_alerts` remain present.
+- The result records whether unknown future fields survived old Python save.
+  Current evidence shows old Python drops unknown top-level profile, match,
+  state, and layout fields, so Tauri must keep preserving unknown shared fields
+  itself when future features add data.
 
 ## Profile Monitoring Soak Smoke
 
