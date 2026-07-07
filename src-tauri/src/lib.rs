@@ -473,6 +473,7 @@ fn capture_screen_region_preview_cached(
     top: i32,
     width: u32,
     height: u32,
+    force_refresh: Option<bool>,
 ) -> Result<CapturePreview, String> {
     let key = screen_preview_key(source_key, left, top, width, height);
     let signature = screen_preview_signature(left, top, width, height);
@@ -482,9 +483,12 @@ fn capture_screen_region_preview_cached(
         width,
         height,
     };
-    let (frame, cached) = preview_cache.frame_for(key, signature.clone(), || {
-        capture_screen_region(capture_region).map_err(|err| err.to_string())
-    })?;
+    let capture = || capture_screen_region(capture_region).map_err(|err| err.to_string());
+    let (frame, cached) = if force_refresh.unwrap_or(false) {
+        preview_cache.refresh_frame(key, signature.clone(), capture)?
+    } else {
+        preview_cache.frame_for(key, signature.clone(), capture)?
+    };
     capture_preview_from_frame(frame, signature, cached)
 }
 

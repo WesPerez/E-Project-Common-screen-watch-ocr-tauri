@@ -45,6 +45,29 @@ impl PreviewCacheState {
         Ok((frame, false))
     }
 
+    pub fn refresh_frame(
+        &self,
+        key: impl Into<String>,
+        signature: impl Into<String>,
+        capture: impl FnOnce() -> Result<RgbFrame, String>,
+    ) -> Result<(RgbFrame, bool), String> {
+        let key = key.into();
+        let signature = signature.into();
+        let frame = capture()?;
+        let mut previews = self
+            .previews
+            .lock()
+            .map_err(|_| "preview cache lock is poisoned".to_string())?;
+        previews.insert(
+            key,
+            CachedPreview {
+                signature,
+                frame: frame.clone(),
+            },
+        );
+        Ok((frame, false))
+    }
+
     #[allow(dead_code)]
     pub fn retain_keys<'a>(&self, keys: impl IntoIterator<Item = &'a str>) -> Result<(), String> {
         let keys = keys.into_iter().collect::<HashSet<_>>();
@@ -132,6 +155,32 @@ mod tests {
             })
             .unwrap();
         assert!(!cached);
+        assert_eq!(frame, solid(1, [90, 80, 70]));
+    }
+
+    #[test]
+    fn refresh_frame_replaces_same_signature_cache() {
+        let cache = PreviewCacheState::default();
+        cache
+            .frame_for("screen:monitor-1", "screen:1:0:0:10:10", || {
+                Ok(solid(1, [10, 20, 30]))
+            })
+            .unwrap();
+
+        let (frame, cached) = cache
+            .refresh_frame("screen:monitor-1", "screen:1:0:0:10:10", || {
+                Ok(solid(1, [90, 80, 70]))
+            })
+            .unwrap();
+
+        assert!(!cached);
+        assert_eq!(frame, solid(1, [90, 80, 70]));
+        let (frame, cached) = cache
+            .frame_for("screen:monitor-1", "screen:1:0:0:10:10", || {
+                Ok(solid(1, [1, 2, 3]))
+            })
+            .unwrap();
+        assert!(cached);
         assert_eq!(frame, solid(1, [90, 80, 70]));
     }
 

@@ -58,6 +58,7 @@ const SOURCE_PREVIEW_SYNC_MS = 1000;
 const SOURCE_PREVIEW_BUSY_RETRY_MS = 250;
 const LAYOUT_STORAGE_KEY = "screen-watch-ocr-tauri:workbench-layout:v1";
 const MONITOR_HEARTBEAT_MS = 1000;
+const PROFILE_MONITOR_RESTART_DELAY_MS = 250;
 const CONTROL_ROW_KEYS = ["screens", "apps", "region", "match", "run"];
 const CONTROL_ROW_DEFAULTS = [116, 116, 142, 244, 150];
 const CONTROL_ROW_MINIMUMS = [70, 70, 92, 156, 144];
@@ -94,6 +95,7 @@ let monitoringUiGeneration = 0;
 let currentMonitoringGeneration = 0;
 let stoppedMonitoringGeneration = 0;
 let profilePasteFallbackTimer = null;
+let profileMonitoringRestartTimer = null;
 
 async function refresh() {
   const status = document.querySelector("#status");
@@ -853,7 +855,7 @@ function renderMonitorList() {
         }
         renderSourcePreviewPlaceholders();
         scheduleSourcePreviews(0);
-        persistProfileSources();
+        persistProfileSources({ restartMonitoring: true });
       });
       const name = monitor.isVirtual
         ? "virtual"
@@ -924,6 +926,7 @@ async function capturePreview() {
       top: monitor.top,
       width,
       height,
+      forceRefresh: true,
     });
     const image = document.querySelector("#preview");
     image.src = preview.dataUrl;
@@ -982,7 +985,7 @@ function renderWindowSource(window) {
     }
     renderSourcePreviewPlaceholders();
     scheduleSourcePreviews(0);
-    persistProfileSources();
+    persistProfileSources({ restartMonitoring: true });
   });
   const text = document.createElement("span");
   text.textContent = `${window.display} ${window.width}x${window.height}`;
@@ -1230,6 +1233,7 @@ async function refreshSourcePreviews({ scheduled = false } = {}) {
                 top: source.top,
                 width: source.width,
                 height: source.height,
+                forceRefresh: true,
               })
             : await invoke("capture_window_preview_cached", {
                 sourceKey: source.key,
@@ -1578,20 +1582,69 @@ async function persistLastProfile() {
   }
 }
 
-async function persistProfileSources() {
+async function persistProfileSources(options = {}) {
   if (applyingProfileSources || !currentDataDir) {
     return;
   }
   try {
-    const options = buildProfileOptions();
+    const profileOptions = buildProfileOptions();
     await persistLastProfile();
     await invoke("save_profile_sources", {
       profileNumber: selectedProfileNumber(),
-      options,
+      options: profileOptions,
     });
-    legacyMaxAlerts = options.maxAlerts ?? legacyMaxAlerts;
+    legacyMaxAlerts = profileOptions.maxAlerts ?? legacyMaxAlerts;
+    if (options.restartMonitoring) {
+      scheduleProfileMonitoringRestart();
+    }
   } catch (error) {
     document.querySelector("#status").textContent = String(error);
+  }
+}
+
+function scheduleProfileMonitoringRestart(reason = "配置已保存") {
+  if (!profileMonitoringActive) {
+    return;
+  }
+  if (profileMonitoringRestartTimer) {
+    window.clearTimeout(profileMonitoringRestartTimer);
+  }
+  const status = document.querySelector("#status");
+  status.textContent = `${reason}，即将重启监控...`;
+  profileMonitoringRestartTimer = window.setTimeout(() => {
+    profileMonitoringRestartTimer = null;
+    restartProfileMonitoring(reason);
+  }, PROFILE_MONITOR_RESTART_DELAY_MS);
+}
+
+function cancelProfileMonitoringRestart() {
+  if (!profileMonitoringRestartTimer) {
+    return;
+  }
+  window.clearTimeout(profileMonitoringRestartTimer);
+  profileMonitoringRestartTimer = null;
+}
+
+async function restartProfileMonitoring(reason = "配置已保存") {
+  if (!profileMonitoringActive) {
+    return;
+  }
+  if (monitoringOperationPending) {
+    scheduleProfileMonitoringRestart(reason);
+    return;
+  }
+
+  const status = document.querySelector("#status");
+  monitoringOperationPending = "restart";
+  updateRunControls();
+  status.textContent = `${reason}，重启监控...`;
+
+  await stopMonitoring();
+  monitoringOperationPending = "";
+  updateRunControls();
+  await startProfileMonitoring();
+  if (profileMonitoringActive) {
+    appendLog("配置已应用，监控已重启");
   }
 }
 
@@ -1663,6 +1716,7 @@ async function startMonitoring() {
 async function stopMonitoring() {
   const status = document.querySelector("#status");
   const result = document.querySelector("#scan-result");
+  cancelProfileMonitoringRestart();
   monitoringUiGeneration += 1;
   stopMonitoringHeartbeat();
   status.textContent = "停止监控...";
@@ -2046,6 +2100,7 @@ async function loadProfile(options = {}) {
 async function switchProfile() {
   await persistLastProfile();
   await loadProfile({ selectFirstTarget: true });
+  scheduleProfileMonitoringRestart("Profile 已切换");
 }
 
 async function normalizeProfile() {
@@ -2057,6 +2112,7 @@ async function normalizeProfile() {
     });
     await loadProfile();
     status.textContent = "Ready";
+    scheduleProfileMonitoringRestart("Profile 已规范化");
   } catch (error) {
     document.querySelector("#profile-result").textContent = String(error);
     status.textContent = String(error);
@@ -2072,6 +2128,7 @@ async function toggleProfileTargets() {
     });
     await loadProfile();
     status.textContent = profileTargetsEnabledStatusText(editResult);
+    scheduleProfileMonitoringRestart("模板启用状态已更新");
   } catch (error) {
     document.querySelector("#profile-result").textContent = String(error);
     status.textContent = String(error);
@@ -2089,6 +2146,7 @@ async function setProfileTargetEnabled(index, enabled) {
     });
     await loadProfile();
     status.textContent = profileTargetsEnabledStatusText(editResult);
+    scheduleProfileMonitoringRestart("模板启用状态已更新");
   } catch (error) {
     document.querySelector("#profile-result").textContent = String(error);
     status.textContent = String(error);
@@ -2127,6 +2185,7 @@ async function removeProfileTarget(index) {
     applyProfileEditSelection(editResult);
     await loadProfile();
     status.textContent = "Ready";
+    scheduleProfileMonitoringRestart("模板已删除");
   } catch (error) {
     document.querySelector("#profile-result").textContent = String(error);
     status.textContent = String(error);
@@ -2155,6 +2214,7 @@ async function clearProfileTargets() {
     applyProfileEditSelection(editResult);
     await loadProfile();
     status.textContent = "Ready";
+    scheduleProfileMonitoringRestart("模板已清空");
   } catch (error) {
     document.querySelector("#profile-result").textContent = String(error);
     status.textContent = String(error);
@@ -2232,6 +2292,7 @@ async function pasteProfileImages() {
     applyProfileEditSelection(importResult);
     await loadProfile();
     status.textContent = profileImportStatusText(importResult);
+    scheduleProfileMonitoringRestart("模板已粘贴");
   } catch (error) {
     document.querySelector("#profile-result").textContent = String(error);
     status.textContent = String(error);
@@ -2253,6 +2314,7 @@ async function pasteProfileImageFiles(files) {
     applyProfileEditSelection(importResult);
     await loadProfile();
     status.textContent = profileImportStatusText(importResult);
+    scheduleProfileMonitoringRestart("模板已粘贴");
   } catch (error) {
     document.querySelector("#profile-result").textContent = String(error);
     status.textContent = String(error);
@@ -2392,6 +2454,7 @@ async function importProfilePaths(request, clearTextInput) {
     }
     await loadProfile();
     status.textContent = profileImportStatusText(importResult);
+    scheduleProfileMonitoringRestart("模板已导入");
   } catch (error) {
     document.querySelector("#profile-result").textContent = String(error);
     status.textContent = String(error);
@@ -2440,6 +2503,7 @@ async function captureProfileTarget() {
     await loadProfile();
     result.textContent = JSON.stringify(importResult, null, 2);
     status.textContent = profileImportStatusText(importResult);
+    scheduleProfileMonitoringRestart("模板已截图");
   } catch (error) {
     result.textContent = String(error);
     status.textContent = String(error);
@@ -2556,6 +2620,8 @@ function updateRunControls() {
     button.textContent = "正在启动...";
   } else if (monitoringOperationPending === "stop") {
     button.textContent = "正在停止...";
+  } else if (monitoringOperationPending === "restart") {
+    button.textContent = "正在应用...";
   } else {
     button.textContent = profileMonitoringActive ? "停止监控" : "开始监控";
   }
@@ -2608,7 +2674,7 @@ document
     if (event.target.checked) {
       rememberSelectedWindowApps();
     }
-    persistProfileSources();
+    persistProfileSources({ restartMonitoring: true });
   });
 [
   "#profile-region-left",
@@ -2628,7 +2694,7 @@ document
   document.querySelector(selector).addEventListener("change", () => {
     renderSourcePreviewPlaceholders();
     scheduleSourcePreviews(0);
-    persistProfileSources();
+    persistProfileSources({ restartMonitoring: true });
   });
 });
 document
