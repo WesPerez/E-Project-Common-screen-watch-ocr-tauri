@@ -9,6 +9,7 @@
     "test:frontend": "node --test src/*.test.js",
     "verify:migration": "powershell -ExecutionPolicy Bypass -File scripts/verify-migration.ps1",
     "ocr:smoke": "powershell -ExecutionPolicy Bypass -File scripts/ocr-smoke.ps1",
+    "ocr:corpus:smoke": "powershell -ExecutionPolicy Bypass -File scripts/ocr-corpus-smoke.ps1",
     "ocr:text:parity": "powershell -ExecutionPolicy Bypass -File scripts/ocr-text-parity-smoke.ps1",
     "template:benchmark": "powershell -ExecutionPolicy Bypass -File scripts/template-benchmark.ps1",
     "template:parity": "powershell -ExecutionPolicy Bypass -File scripts/template-parity-benchmark.ps1",

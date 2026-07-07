@@ -168,7 +168,20 @@ function Get-BuildInfoPath {
 
 function Get-ExeSha256 {
     param([string]$ExePath)
-    return (Get-FileHash -Algorithm SHA256 -LiteralPath $ExePath).Hash.ToLowerInvariant()
+
+    if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) {
+        return (Get-FileHash -Algorithm SHA256 -LiteralPath $ExePath).Hash.ToLowerInvariant()
+    }
+
+    $stream = [IO.File]::OpenRead($ExePath)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($stream)
+        return ([BitConverter]::ToString($hashBytes) -replace "-", "").ToLowerInvariant()
+    } finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
 }
 
 function Get-PeSubsystem {
@@ -551,6 +564,7 @@ function Assert-PackageScriptContract {
         "test:frontend" = "node --test src/*.test.js"
         "verify:migration" = "powershell -ExecutionPolicy Bypass -File scripts/verify-migration.ps1"
         "ocr:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-smoke.ps1"
+        "ocr:corpus:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/ocr-corpus-smoke.ps1"
         "template:benchmark" = "powershell -ExecutionPolicy Bypass -File scripts/template-benchmark.ps1"
         "template:parity" = "powershell -ExecutionPolicy Bypass -File scripts/template-parity-benchmark.ps1"
         "production:template:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/production-template-performance-smoke.ps1"
@@ -583,6 +597,7 @@ function Assert-PackageScriptContract {
     foreach ($scriptPath in @(
             "scripts\verify-migration.ps1",
             "scripts\ocr-smoke.ps1",
+            "scripts\ocr-corpus-smoke.ps1",
             "scripts\template-benchmark.ps1",
             "scripts\template-parity-benchmark.ps1",
             "scripts\production-template-performance-smoke.ps1",
@@ -786,6 +801,7 @@ function Assert-OcrSmokeContract {
     $dataDirSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "crates\screen-watch-core\src\data_dir.rs") -Raw
     $ocrSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "crates\screen-watch-core\src\ocr.rs") -Raw
     $smokeSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "scripts\ocr-smoke.ps1") -Raw
+    $corpusSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "scripts\ocr-corpus-smoke.ps1") -Raw
 
     $appName = Get-RustStringConst $dataDirSource "APP_NAME"
     $ocrModelDirEnv = Get-RustStringConst $ocrSource "OCR_MODEL_DIR_ENV"
@@ -821,6 +837,30 @@ function Assert-OcrSmokeContract {
     $probeIndex = $smokeSource.IndexOf('native_ocr_real_model_probe_initializes_from_external_assets')
     if ($preflightIndex -lt 0 -or $probeIndex -lt 0 -or $preflightIndex -gt $probeIndex) {
         throw "OCR smoke script must preflight model assets before running the real-model Cargo probe"
+    }
+
+    foreach ($expected in @(
+            "target\ocr-model-smoke\monkt-ppocrv5-english",
+            "target\ocr-model-smoke\monkt-ppocrv5-chinese",
+            "target\ocr-corpus-smoke",
+            "ocr-corpus-smoke-`$stamp-result.json",
+            "scripts\ocr-smoke.ps1",
+            "english-ready",
+            "READY",
+            "english-alert-number",
+            "ALERT 42",
+            "english-ocr-test",
+            "OCR TEST",
+            "chinese-ready",
+            "0x51C6",
+            "0x5907",
+            "chinese-monitor",
+            "0x76D1",
+            "0x63A7",
+            "does not bundle OCR models into the lite exe",
+            "PP-OCRv6/RapidOCR-native"
+        )) {
+        Assert-TextContains "OCR corpus smoke contract" $corpusSource $expected
     }
 }
 
@@ -884,6 +924,7 @@ function Assert-ManualGateRunbookContract {
             'powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1 -SkipPython -SkipFrontend -SkipRelease -IncludeDesktopSmoke',
             'powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1 -SkipRelease -IncludeOcrSmoke -OcrModelDir "D:\Models\rapidocr"',
             'powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1 -SkipRelease -IncludeOcrSmoke -OcrModelDir "D:\Models\rapidocr" -OcrSmokeImage ".\smoke.png" -OcrSmokeExpect "READY"',
+            'npm run ocr:corpus:smoke',
             'npm run tauri:dev',
             'npm run webview:visual:smoke -- --gate source',
             'npm run webview:visual:smoke -- --gate gallery',
