@@ -2702,7 +2702,7 @@ function writeEvidenceRecords(summary) {
           ...summary.gates.legacyProfile.screenshots,
         ],
         remainingRisk:
-          "proves old Python-shaped profile data works when the remembered app window is present at Tauri startup; a separate late-start remembered-app gate is still needed for apps launched after Tauri has already loaded the profile",
+          "proves old Python-shaped profile data works when the remembered app window is present at Tauri startup; the separate legacy-late-window gate covers apps launched after Tauri has already loaded the profile; broad third-party window capture behavior still depends on OS/window-class support",
       }),
       "utf8",
     );

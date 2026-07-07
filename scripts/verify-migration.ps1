@@ -428,6 +428,18 @@ function Assert-TextContains {
     }
 }
 
+function Assert-TextNotContains {
+    param(
+        [string]$Name,
+        [string]$Text,
+        [string]$Forbidden
+    )
+
+    if ($Text.Contains($Forbidden)) {
+        throw "$Name contains forbidden stale contract text: $Forbidden"
+    }
+}
+
 function Assert-PortableOcrContract {
     param([string]$ProjectRootPath)
 
@@ -1060,6 +1072,71 @@ function Assert-ManualGateRunbookContract {
             'manualGateEvidenceStatus:'
         )) {
         Assert-TextContains "manual gate runbook evidence" $runbookSource $requiredText
+    }
+}
+
+function Assert-ManualGateEvidenceRiskContract {
+    param([string]$ProjectRootPath)
+
+    $webviewSmokePath = Join-Path $ProjectRootPath "scripts\webview-visual-smoke.mjs"
+    $legacyProfileEvidencePath = Join-Path $ProjectRootPath "docs\manual-gate-evidence\legacy-profile-e2e-smoke.md"
+    $lateWindowEvidencePath = Join-Path $ProjectRootPath "docs\manual-gate-evidence\legacy-late-window-e2e-smoke.md"
+    $comparisonPath = Join-Path $ProjectRootPath "docs\COMPARISON_AUDIT.md"
+
+    foreach ($path in @($webviewSmokePath, $legacyProfileEvidencePath, $lateWindowEvidencePath, $comparisonPath)) {
+        if (-not (Test-Path -LiteralPath $path)) {
+            throw "Missing manual evidence risk contract file at $path"
+        }
+    }
+
+    $webviewSmokeSource = Get-Content -LiteralPath $webviewSmokePath -Raw
+    $legacyProfileEvidence = Get-Content -LiteralPath $legacyProfileEvidencePath -Raw
+    $lateWindowEvidence = Get-Content -LiteralPath $lateWindowEvidencePath -Raw
+    $comparisonSource = Get-Content -LiteralPath $comparisonPath -Raw
+
+    $staleLateStartRisk = "a separate late-start remembered-app gate is still needed"
+    foreach ($entry in @(
+            @{ Name = "webview visual smoke evidence generator"; Text = $webviewSmokeSource },
+            @{ Name = "legacy profile evidence record"; Text = $legacyProfileEvidence }
+        )) {
+        Assert-TextNotContains $entry.Name $entry.Text $staleLateStartRisk
+    }
+
+    foreach ($expected in @(
+            "Legacy Profile End-to-End Smoke",
+            "Completion status: pass",
+            "remembered app window is present at Tauri startup",
+            "the separate legacy-late-window gate covers apps launched after Tauri has already loaded the profile"
+        )) {
+        Assert-TextContains "legacy profile evidence late-window boundary" $legacyProfileEvidence $expected
+    }
+
+    foreach ($expected in @(
+            "Legacy Profile End-to-End Smoke",
+            'status: "pass"',
+            "remembered app window is present at Tauri startup",
+            "the separate legacy-late-window gate covers apps launched after Tauri has already loaded the profile"
+        )) {
+        Assert-TextContains "webview evidence generator late-window boundary" $webviewSmokeSource $expected
+    }
+
+    foreach ($expected in @(
+            "Legacy Late-Start Window End-to-End Smoke",
+            "Completion status: pass",
+            "--gate legacy-late-window",
+            "while the remembered app window was absent",
+            "after Tauri had loaded the profile",
+            "without reselecting the window",
+            "proves late-start recovery"
+        )) {
+        Assert-TextContains "legacy late-window evidence record" $lateWindowEvidence $expected
+    }
+
+    foreach ($expected in @(
+            "legacy late-start remembered-app WebView smoke",
+            "late-start remembered-window workflow after Tauri had already loaded the legacy profile"
+        )) {
+        Assert-TextContains "comparison audit late-window evidence" $comparisonSource $expected
     }
 }
 
@@ -2445,6 +2522,7 @@ $summary = [ordered]@{
     acceptanceRealGateContract = $null
     manualGateRunbookContract = $null
     manualGateEvidenceSelfTest = $null
+    manualGateEvidenceRiskContract = $null
     evidenceReferenceContract = $null
     frontendCommandContract = $null
     frontendCommandArgumentContract = $null
@@ -2730,6 +2808,13 @@ Invoke-CapturedStep `
     -Script { Assert-ManualGateRunbookContract $ProjectRootPath } `
     -SuppressOutput | Out-Null
 $summary.manualGateRunbookContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Manual gate evidence risk contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-ManualGateEvidenceRiskContract $ProjectRootPath } `
+    -SuppressOutput | Out-Null
+$summary.manualGateEvidenceRiskContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Manual gate evidence self-test" `
