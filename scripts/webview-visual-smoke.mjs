@@ -41,7 +41,7 @@ const monitoringSoakMs = clampNumber(
     Number(process.env.SCREENWATCH_MONITORING_SOAK_MS || 60000),
   ),
   10000,
-  300000,
+  3600000,
 );
 const runStamp = timestamp();
 const runRoot = path.join(
@@ -1276,6 +1276,28 @@ async function selectOnlyHelperWindowSource() {
   })()`);
 }
 
+async function selectedProfileSourceCounts() {
+  return evalJs(`(() => ({
+    monitors: [...document.querySelectorAll('#monitors input[type="checkbox"]')].filter((item) => item.checked).length,
+    windows: [...document.querySelectorAll('#windows input[type="checkbox"]')].filter((item) => item.checked).length,
+  }))()`);
+}
+
+async function ensureOnlyHelperWindowSourceSelected(description) {
+  const selected = await waitFor(async () => {
+    const result = await selectOnlyHelperWindowSource();
+    if (!result.ok) {
+      return null;
+    }
+    const counts = await selectedProfileSourceCounts();
+    return counts.windows > 0 && counts.monitors === 0
+      ? { ...result, selectedCounts: counts }
+      : null;
+  }, `${description} helper window source selected`, 20000, 500);
+  log(`${description} helper window source selected`, selected);
+  return selected;
+}
+
 async function runSourcePreviewGate() {
   log("running source preview visual gate");
   await waitForReadyStatus();
@@ -1489,11 +1511,11 @@ async function waitForCardCount(count) {
 async function captureProfileTargetForSmoke(description) {
   let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    await ensureOnlyHelperWindowSourceSelected(`${description} capture attempt ${attempt}`);
     await waitFor(async () => {
       const state = await buttonState("#profile-capture-target");
       return state.exists && !state.disabled ? state : null;
     }, `${description} capture button ready`, 10000, 250);
-    await waitForReadyStatus();
     await clickSelector("#profile-capture-target");
     try {
       return await waitForCardCount(1);

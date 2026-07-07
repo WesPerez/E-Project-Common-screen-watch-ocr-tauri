@@ -415,11 +415,11 @@ release exe on an interactive Windows desktop:
 npm run webview:monitoring:soak
 ```
 
-For final single-file signoff with the same 120-second duration used by the
+For final single-file signoff with the same 600-second duration used by the
 latest audit:
 
 ```powershell
-node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe --gate monitoring-soak --soak-ms 120000
+node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe --gate monitoring-soak --soak-ms 600000
 ```
 
 The default soak duration is 60 seconds. For focused local debugging, pass a
