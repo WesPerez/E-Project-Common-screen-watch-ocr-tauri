@@ -44,6 +44,13 @@ has all required evidence fields:
 npm run manual:evidence
 ```
 
+To verify that current evidence records do not point at missing local result
+files, screenshots, logs, or the delivered exe, run:
+
+```powershell
+npm run evidence:references
+```
+
 During partial work, use `-AllowNonPass` to check field completeness without
 claiming all gates have passed.
 

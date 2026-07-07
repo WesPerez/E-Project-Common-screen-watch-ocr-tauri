@@ -571,6 +571,7 @@ function Assert-PackageScriptContract {
         "packaged:smoke" = "powershell -ExecutionPolicy Bypass -File scripts/packaged-smoke.ps1"
         "python:profile:compat" = "powershell -ExecutionPolicy Bypass -File scripts/python-profile-compat-smoke.ps1"
         "manual:evidence" = "powershell -ExecutionPolicy Bypass -File scripts/manual-gate-evidence.ps1"
+        "evidence:references" = "powershell -ExecutionPolicy Bypass -File scripts/evidence-reference-check.ps1"
         "webview:visual:smoke" = "node scripts/webview-visual-smoke.mjs"
         "webview:ocr-lite:smoke" = "node scripts/webview-visual-smoke.mjs --gate ocr-lite-boundary"
         "webview:monitoring:smoke" = "node scripts/webview-visual-smoke.mjs --gate monitoring"
@@ -606,6 +607,7 @@ function Assert-PackageScriptContract {
             "scripts\packaged-smoke.ps1",
             "scripts\python-profile-compat-smoke.ps1",
             "scripts\manual-gate-evidence.ps1",
+            "scripts\evidence-reference-check.ps1",
             "scripts\webview-visual-smoke.mjs",
             "scripts\package-portable.ps1",
             "scripts\build-tauri.mjs"
@@ -1006,6 +1008,7 @@ function Assert-ManualGateRunbookContract {
             'npm run manual:evidence -- -New',
             'npm run manual:evidence -- -Status',
             'npm run manual:evidence',
+            'npm run evidence:references',
             'powershell -ExecutionPolicy Bypass -File scripts\packaged-smoke.ps1 -ExePath target\release\screen-watch-ocr-tauri.exe -StartupWaitSeconds 18',
             'npm run template:parity',
             'powershell -ExecutionPolicy Bypass -File scripts\template-benchmark.ps1',
@@ -2095,6 +2098,7 @@ $summary = [ordered]@{
     acceptanceRealGateContract = $null
     manualGateRunbookContract = $null
     manualGateEvidenceSelfTest = $null
+    evidenceReferenceContract = $null
     frontendCommandContract = $null
     frontendCommandArgumentContract = $null
     frontendDomContract = $null
@@ -2382,6 +2386,13 @@ Invoke-CapturedStep `
     -Script { powershell -ExecutionPolicy Bypass -File scripts\manual-gate-evidence.ps1 -SelfTest } `
     -SuppressOutput | Out-Null
 $summary.manualGateEvidenceSelfTest = "passed"
+
+Invoke-CapturedStep `
+    -Name "Evidence reference contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { powershell -ExecutionPolicy Bypass -File scripts\evidence-reference-check.ps1 } `
+    -SuppressOutput | Out-Null
+$summary.evidenceReferenceContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Frontend command contract" `
