@@ -80,6 +80,11 @@ python -m unittest discover -s tests -v
   defaults. Threshold, scales, interval, cooldown, beep settings, max template
   count, max alert count, region defaults, and first-monitor default selection
   are locked by `legacyDefaultSettingsContract`.
+- Legacy failure guards must remain explicit: missing templates, disabled
+  templates, missing sources, duplicate monitoring starts, failed monitoring
+  startup recovery, stopping-state recovery, and OCR-lite startup rejection must
+  not leave the UI stuck or create a background worker. These paths are locked
+  by `legacyFailureGuardContract`.
 - Backend Tauri commands must remain reachable; the verifier fails if a
   `#[tauri::command]` function is missing from `generate_handler![...]` or if
   the handler list contains a non-command function.

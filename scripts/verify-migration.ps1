@@ -1886,6 +1886,87 @@ function Assert-LegacyDefaultSettingsContract {
     Assert-TextContains "legacy GUI default Rust test name" $profileSource "profile_watch_config_uses_enabled_targets_and_gui_defaults"
 }
 
+function Assert-LegacyFailureGuardContract {
+    param(
+        [string]$ProjectRootPath,
+        [string]$PythonProjectPath
+    )
+
+    $pythonSource = Get-Content -LiteralPath (Join-Path $PythonProjectPath "src\screen_watch\app.py") -Raw
+    $frontendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\main.js") -Raw
+    $frontendBehaviorSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.js") -Raw
+    $frontendTestSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.test.js") -Raw
+    $monitorSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\monitor_session.rs") -Raw
+
+    foreach ($expected in @(
+            'if self.worker and self.worker.is_alive():',
+            'raise ValueError("先添加至少一张模板图片")',
+            'raise ValueError("至少勾选一张要匹配的模板图片")',
+            'raise ValueError("至少选择一个屏幕或应用")',
+            'messagebox.showerror("无法开始", str(exc))',
+            'messagebox.showerror("无法扫描", str(exc))',
+            'self.status.set("正在停止。")',
+            'self.update_monitor_button()'
+        )) {
+        Assert-TextContains "legacy failure guard in Python app" $pythonSource $expected
+    }
+
+    foreach ($expected in @(
+            'throw new Error(actionState.reason)',
+            'if (monitoringOperationPending) {',
+            'monitoringOperationPending = "start";',
+            'monitoringOperationPending = "stop";',
+            'monitoringActive = false;',
+            'profileMonitoringActive = false;',
+            'currentMonitoringGeneration = 0;',
+            'stopMonitoringHeartbeat();',
+            'resetMonitoringProgressLog();',
+            'monitoringOperationPending = "";',
+            'button.disabled = Boolean(monitoringOperationPending);',
+            'message.includes("still stopping")',
+            '"上一轮监控还在停止，请稍后再开始"'
+        )) {
+        Assert-TextContains "legacy failure guard in Tauri frontend" $frontendSource $expected
+    }
+
+    foreach ($expected in @(
+            "profile workflow action state blocks missing enabled targets before invokes",
+            "profile workflow action state gates sources and duplicate monitoring starts",
+            "profile capture target workflow allows empty profiles but still requires sources",
+            'assert.equal(state.reason, "请先添加并启用至少一个模板")',
+            'reason: "请至少选择一个物理屏幕或窗口"',
+            'reason: "Profile 监控已在运行"'
+        )) {
+        Assert-TextContains "legacy failure guard frontend unit test" $frontendTestSource $expected
+    }
+
+    foreach ($expected in @(
+            'export function profileWorkflowActionState',
+            'state.noTargetsText || "请先添加并启用至少一个模板"',
+            'state.noSourcesText || "请至少选择一个物理屏幕或窗口"',
+            'state.alreadyMonitoringText || "Profile 监控已在运行"',
+            'const enabledTargetCount = profileEnabledTargetCount(profile);',
+            'const hasSources = profileSourceOptionsHaveSources(sourceOptions);',
+            'const monitoringActive = Boolean(state.profileMonitoringActive);',
+            'canRun: !reason'
+        )) {
+        Assert-TextContains "legacy failure guard frontend helper" $frontendBehaviorSource $expected
+    }
+
+    foreach ($expected in @(
+            "start_rejects_ocr_targets_before_starting_lite_worker",
+            'err.contains("OCR target requires an available OCR backend")',
+            'err.contains("lite build: OCR module disabled")',
+            'assert!(!session.snapshot().unwrap().running);',
+            'assert!(session.worker.lock().unwrap().is_none());',
+            "stop_keeps_slow_stopping_worker_for_later_reap",
+            "start_replaces_previous_worker_that_is_still_stopping",
+            'assert!(!stopped.running);'
+        )) {
+        Assert-TextContains "legacy failure guard in Tauri monitor session" $monitorSource $expected
+    }
+}
+
 function Assert-LegacyProfilePersistenceContract {
     param(
         [string]$ProjectRootPath,
@@ -2297,6 +2378,7 @@ $summary = [ordered]@{
     legacyVisibleWorkflowContract = $null
     legacyUiSurfaceContract = $null
     legacyDefaultSettingsContract = $null
+    legacyFailureGuardContract = $null
     legacyProfilePersistenceContract = $null
     audioAlarmParityContract = $null
     frontendOcrReadinessContract = $null
@@ -2641,6 +2723,13 @@ Invoke-CapturedStep `
     -Script { Assert-LegacyDefaultSettingsContract $ProjectRootPath $PythonProjectPath } `
     -SuppressOutput | Out-Null
 $summary.legacyDefaultSettingsContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Legacy failure guard contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-LegacyFailureGuardContract $ProjectRootPath $PythonProjectPath } `
+    -SuppressOutput | Out-Null
+$summary.legacyFailureGuardContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Legacy profile persistence contract" `
