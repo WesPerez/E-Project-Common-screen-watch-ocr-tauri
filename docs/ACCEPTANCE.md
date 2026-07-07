@@ -24,13 +24,13 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
 
 ## Current Rust/Tauri Verification
 
-- Current status snapshot as of 2026-07-07 19:47 +08:00:
-  `docs\VERIFICATION_RUN_20260707_1947.md` and
+- Current status snapshot as of 2026-07-07 22:48 +08:00:
+  `docs\VERIFICATION_RUN_20260707_2245.md` and
   `docs\COMPARISON_AUDIT.md` are the current top-level evidence records. The
   manual evidence gate is `19 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete,
   0 invalid`; the delivered single-file exe is
-  `release-single\ScreenWatchOCRTauri.exe`, 3,587,584 bytes, SHA-256
-  `8986F1168578CF6B564229E3D80C12DC1E8809138B0786B38C8DD99B46E3BF9A`, and the
+  `release-single\ScreenWatchOCRTauri.exe`, 3,591,168 bytes, SHA-256
+  `1D03E007175F987B95E2523C16E611F27CD71A86C10EED9AAB0AC24EA5D189FE`, and the
   migration verifier locks it as a Windows GUI subsystem executable.
 - `scripts\verify-migration.ps1` is the repeatable migration gate. It runs the
   static Python test inventory check, Python baseline count check, Rust
@@ -1197,20 +1197,22 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   click smoke had not yet been recorded.
 - After refreshing the final packaged WebView2/CDP full smoke:
   `node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe`
-  passed in `webview-visual-smoke-20260707-161407-result.json` with source
+  passed in `webview-visual-smoke-20260707-224646-result.json` with source
   preview, legacy Python profile restore/scan/monitoring, template-gallery
   PNG/JPG/JPEG/BMP/WebP path imports, clipboard bitmap and file-list paste,
   one-shot scan evidence, OCR-lite raw config rejection, monitoring
   start/stop/restart, and all layout splitter drags in one final-exe run. The
   late-start remembered-window gate also passed in
-  `webview-visual-smoke-20260707-161653-result.json`.
+  `webview-visual-smoke-20260707-224804-result.json`.
 - Current focused `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1
   -SkipPython -SkipFrontend -SkipRelease` passed after the final single-exe
-  rebuild with Rust core `124 passed, 3 ignored`, Tauri shell/backend `92
+  rebuild with Rust core `125 passed, 3 ignored`, Tauri shell/backend `92
   passed, 16 ignored`, OCR feature `28 passed`,
-  `singleFileDeliverableContract: 3587584 bytes,
-  8986F1168578CF6B564229E3D80C12DC1E8809138B0786B38C8DD99B46E3BF9A,
-  WindowsGui`, and `liteSizeGate: passed`. The earlier full default verifier
+  `singleFileDeliverableContract: 3591168 bytes,
+  1D03E007175F987B95E2523C16E611F27CD71A86C10EED9AAB0AC24EA5D189FE,
+  WindowsGui`, and `liteSizeGate: passed`. The current final exe also passed
+  packaged smoke, tray-menu smoke, full WebView visual smoke, and late-start
+  remembered-window smoke after the rebuild. The earlier full default verifier
   evidence still covers Python inventory `98`, Python unittest `98`, frontend
   `103 passed`, frontend build `True`, and release build `True`.
 - After hardening the evidence-directory open path:
@@ -1222,7 +1224,7 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1
   -SkipPython -SkipFrontend -SkipRelease` then passed with Rust core `124
   passed, 3 ignored`, Tauri shell/backend `91 passed, 16 ignored`, OCR feature
-  `28 passed`, and the same final single-file deliverable hash
+  `28 passed`, and the then-current final single-file deliverable hash
   `8986F1168578CF6B564229E3D80C12DC1E8809138B0786B38C8DD99B46E3BF9A`.
 - After locking the app-window self-filter:
   `cargo test -p screen-watch-ocr-tauri window_sources` passed with the new

@@ -36,7 +36,7 @@ Measured on this machine:
 | --- | --- | ---: |
 | Current Python/PyInstaller app | `E:\Project\Common\screen-watch-ocr\dist\ScreenWatchOCR.exe` | 102,021,797 bytes, about 97.3 MiB |
 | New Rust/Tauri lite exe before release-size tuning | `target\release\screen-watch-ocr-tauri.exe` | 8,811,008 bytes, about 8.4 MiB |
-| New Rust/Tauri lite final single exe after release-size tuning and migration hardening | `release-single\ScreenWatchOCRTauri.exe` | 3,587,584 bytes, about 3.42 MiB |
+| New Rust/Tauri lite final single exe after release-size tuning, migration hardening, and production-template fast path | `release-single\ScreenWatchOCRTauri.exe` | 3,591,168 bytes, about 3.43 MiB |
 | New Rust/Tauri full exe with native `pure-onnx-ocr` backend linked through the lazy OCR worker and OCR models external | `target\release\screen-watch-ocr-tauri.exe` after `scripts\package-portable.ps1 -Flavor full` | 9,536,512 bytes, about 9.09 MiB |
 | New Rust/Tauri full portable zip, OCR models external | `target\portable\screen-watch-ocr-tauri-full-portable-20260707-031231-0b794cfa.zip` | 3,752,774 bytes, about 3.58 MiB |
 
