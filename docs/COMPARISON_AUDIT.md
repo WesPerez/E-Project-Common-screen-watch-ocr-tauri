@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 09:32 +08:00
+Last updated: 2026-07-07 10:10 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -11,7 +11,7 @@ future.
 
 - Single-file app: `release-single\ScreenWatchOCRTauri.exe`
 - Size: 3587072 bytes
-- SHA-256: `DB695C7D6382B6F33D6862945380F75BDB69BD6DE4E1B61A1F37D55B91BF10CA`
+- SHA-256: `426BE3C7CDA81186BF4B04381E04C7A850B9AD13CAB494AF7065E7296205B911`
 - Build flavor: lite, OCR models external
 - Functional source state: current UI/monitoring fix set
 
@@ -43,13 +43,13 @@ Everything else is separated so old and new processes do not collide:
 | Python baseline unittest | Current rerun passed 98 tests with `PYTHONPATH=src; python -m unittest -v`; `python -m screen_watch app --smoke-test` returned `{"ok": true, "monitors": 3}` |
 | Main migration verifier | Latest full verifier evidence covered Python 98, Rust core 121, OCR feature 25, frontend 102, desktop smoke 16 gates, packaged smoke, frontend build, and static contracts. After the audio parity contract was added, a light verifier rerun passed Rust core 121, Tauri 87, OCR feature 25, and all static contracts including `audioAlarmParityContract`; that contract locks Python `winsound.PlaySound(..., SND_MEMORY)`/WAV/beep-throttle behavior against the Tauri `PlaySoundW`/`SND_MEMORY` runtime and one-shot/monitoring trigger paths. `legacyVisibleWorkflowContract` maps old visible Python workflows to new controls, frontend handlers, and registered Tauri commands, including the Python-compatible global `state.json` `max_alerts` path and window-only `profileRegion` persistence; `legacyProfilePersistenceContract` locks Python `save_state`/`save_current_profile` field placement against the Tauri profile/state persistence paths; `singleFileDeliverableContract` checks the current single exe size/hash in this audit and verifies PE subsystem WindowsGui (2) when `release-single\ScreenWatchOCRTauri.exe` is present |
 | Desktop smoke | Current rerun passed 16 real Windows desktop gates: screen capture, monitor listing, one-shot screen/window scan, profile screen/window scan, screen/window/remembered-window screenshot-as-template capture, persistent screen/window monitoring, app-window enumeration, preview/frame capture, and real DWM thumbnail register/update/clear |
-| Packaged smoke | final SHA-256 `DB695C7D...` is PE subsystem WindowsGui (2), not console; it passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port using `release-single\ScreenWatchOCRTauri.exe` |
-| Tray menu smoke | final SHA-256 `DB695C7D...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0; old Python tray/processes were not touched |
-| WebView visual smoke | final SHA-256 `DB695C7D...` passed clipboard paste, monitoring restart, layout resize, and legacy late-start remembered app-window recovery in packaged WebView2 runs. The late-start smoke loaded an old Python-shaped profile while the remembered app was absent, recorded `skippedWindowApps=1`, then started the app later and scanned/monitored with positive hits without refreshing or reselecting. Clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with 43x25 target thumbs inside 48x52 cards; monitoring restart recorded generation 1 then 2, first run 7 ticks/7 hits and second run 2 ticks/2 hits with the button restored to `开始监控`; layout smoke measured target/settings +78px, settings/preview +26px, target-list/log +54px, and control-panel group splitter +32px/-32px |
-| WebView monitoring soak | final SHA-256 `DB695C7D...` ran profile monitoring for 60,000ms with 31 UI samples, tick delta 112, hit delta 112, progress-log delta 47, and stopped with the button restored to `开始监控` |
+| Packaged smoke | final SHA-256 `426BE3C...` is PE subsystem WindowsGui (2), not console; it passed start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/port using `release-single\ScreenWatchOCRTauri.exe` |
+| Tray menu smoke | final SHA-256 `426BE3C...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0; old Python tray/processes were not touched |
+| WebView visual smoke | final SHA-256 `426BE3C...` passed source preview, template gallery, clipboard paste, one-shot scan, monitoring restart, layout resize, legacy profile, and legacy late-start remembered app-window recovery in packaged WebView2 runs. The late-start smoke loaded an old Python-shaped profile while the remembered app was absent, recorded `skippedWindowApps=1`, then started the app later and scanned/monitored with positive hits without refreshing or reselecting. Clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with compact target thumbs inside fixed-size cards; monitoring restart recorded generation 1 then 2 with positive tick/hit counts and the button restored to `开始监控`; layout smoke measured all splitters with no horizontal overflow |
+| WebView monitoring soak | final SHA-256 `426BE3C...` ran profile monitoring for 30,000ms with 16 UI samples, tick delta 56, hit delta 56, progress-log delta 28, and stopped with the button restored to `开始监控` |
 | Portable package verification | latest lite portable 1,613,143 bytes remains a historical content-verified package; full portable 3,749,839 bytes remains the latest historical full package verification; final user deliverable is the fresh single exe |
-| Template benchmark | 2560x1440, 8 templates: Rust flat 77ms 8/8, Rust textured 487ms 8/8; Python/OpenCV flat 52ms 8/8, Python/OpenCV textured 50ms with the known 4/8 odd-phase baseline miss |
-| Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 6546ms recorded |
+| Template benchmark | 2560x1440, 8 templates: Rust flat 81ms 8/8, Rust textured 509ms 8/8; Python/OpenCV flat 59ms 8/8, Python/OpenCV textured 58ms with the known 4/8 odd-phase baseline miss |
+| Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 6583ms recorded |
 | Real OCR smoke | Current rerun passed with external PP-OCRv5 English models recognizing READY and external PP-OCRv5 Chinese models recognizing a generated `准备好了` PNG through `cargo test --features ocr`; `npm run ocr:text:parity` also compared old Python `Detector._ocr` supplied-row semantics against Rust OCR text detection/ScanEngine tests, including min_score, case sensitivity, box flattening, missing-box behavior, and a Unicode contains row |
 | Manual evidence status | 16 pass, 0 blocked, 0 fail, 0 missing |
 
@@ -66,7 +66,7 @@ Everything else is separated so old and new processes do not collide:
 | Target enable/disable and select-all/invert | Proven | core/frontend tests, WebView gallery smoke | None known |
 | Hit-count badges and clear hit menu | Proven | frontend tests, WebView context-menu smoke | None known |
 | Pixel target detection | Proven | Python baseline, Rust core tests, scan tests | None known |
-| Template target detection, scales, worker limit | Proven | Rust detector tests, parity/benchmark gates | Production-profile smoke records 8.6s for 18 real templates on synthetic 1440p placement; acceptable but worth tracking |
+| Template target detection, scales, worker limit | Proven | Rust detector tests, parity/benchmark gates | Production-profile smoke records about 6.6s for 18 real templates on synthetic 1440p placement; acceptable but worth tracking |
 | OCR target detection | Partially proven | text-row core tests, Python-vs-Rust OCR text parity smoke, current real PP-OCRv5 English READY and Chinese `准备` recognition smokes | PP-OCRv6/RapidOCR-native compatibility, broad OCR quality, and varied real screenshots remain future validation items |
 | Screen source listing, mss-style monitor indexes, and region persistence | Proven | desktop monitor-listing smoke, frontend `profileRegion` test, core window-only profile save test | Exotic multi-monitor DPI/topology combinations still need spot checks |
 | App-window listing, duplicate ordinals, remembered apps | Proven | window source tests, desktop remembered-window gates | Apps that refuse capture remain an OS/window limitation |
@@ -76,7 +76,7 @@ Everything else is separated so old and new processes do not collide:
 | Source preview with DWM handoff and bitmap fallback | Proven | source-preview tests, real DWM gate, WebView visual smoke | Every third-party window class is not exhaustively covered |
 | Persistent monitoring start/stop/status | Proven | monitor session tests, desktop monitoring gates, packaged WebView monitoring restart smoke, packaged 60s monitoring soak | Multi-hour production soak and broad third-party window matrix are not recorded |
 | Stop then start monitoring again | Proven | frontend monitoring state tests, desktop gates, packaged WebView monitoring restart smoke with button restored to `开始监控` after both stops | Multi-hour manual UI soak still useful before production use |
-| Tick/event logs while monitoring | Proven | frontend tests, `monitor-session` contract, packaged WebView restart smoke progress rows, packaged 60s soak with progress-log delta 47 and per-second heartbeat rows while waiting | Log cadence depends on capture speed and configured interval |
+| Tick/event logs while monitoring | Proven | frontend tests, `monitor-session` contract, packaged WebView restart smoke progress rows, packaged 30s soak with progress-log delta 28 and per-second heartbeat rows while waiting | Log cadence depends on capture speed and configured interval |
 | Alert screenshots, JSONL, cooldown, pruning, evidence directory open | Proven | evidence/scan tests, one-shot desktop gates, packaged WebView one-shot scan smoke checking `alerts.jsonl` plus screenshot output, and legacy visible workflow contract covering `open_evidence_dir` from button to registered backend command | Native Explorer launch is verified by command/contract rather than visual Explorer screenshot |
 | Beep behavior and throttling | Proven | audio tests, Tauri beep state tests, and migration `audioAlarmParityContract` covering Python `winsound.PlaySound(..., SND_MEMORY)`, Tauri `PlaySoundW`/`SND_MEMORY`, and one-shot/monitoring hit triggers | Actual speaker output is not recorded in smoke |
 | Resizable layout splitters | Proven | frontend layout tests for three-pane, stacked, and multi-pane control layouts; packaged WebView layout smoke drags the target/settings splitter, settings/preview splitter, target-list/log splitter, and control-panel group splitter with measured deltas and no horizontal overflow | Very narrow/mobile layouts are covered by responsive CSS and static tests, not exhaustive visual smoke |
