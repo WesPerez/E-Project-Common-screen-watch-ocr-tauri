@@ -2636,22 +2636,26 @@ mod tests {
         fs::create_dir_all(profile.parent().unwrap()).unwrap();
         let jpg = images.join("camera.jpg");
         let bmp = images.join("dialog.bmp");
+        let webp = images.join("browser.webp");
         write_test_image(&jpg, [200, 30, 20], 9, 7, image::ImageFormat::Jpeg);
         write_test_image(&bmp, [10, 120, 240], 5, 4, image::ImageFormat::Bmp);
+        write_test_image(&webp, [120, 30, 180], 6, 8, image::ImageFormat::WebP);
 
-        let result = add_profile_template_pngs_at(&profile, &data, 1, &[jpg, bmp], 5).unwrap();
+        let result =
+            add_profile_template_pngs_at(&profile, &data, 1, &[jpg, bmp, webp], 5).unwrap();
 
         assert!(result.changed);
-        assert_eq!(result.added_count, 2);
-        assert_eq!(result.selected_index, Some(1));
+        assert_eq!(result.added_count, 3);
+        assert_eq!(result.selected_index, Some(2));
         let stored: Value = serde_json::from_str(&fs::read_to_string(&profile).unwrap()).unwrap();
         let targets = stored["targets"].as_array().unwrap();
-        assert_eq!(targets.len(), 2);
+        assert_eq!(targets.len(), 3);
         assert!(targets
             .iter()
             .all(|target| target["path"].as_str().unwrap().ends_with(".png")));
         assert_eq!(targets[0]["size"], json!("9x7"));
         assert_eq!(targets[1]["size"], json!("5x4"));
+        assert_eq!(targets[2]["size"], json!("6x8"));
         assert_eq!(
             RgbFrame::from_png_path(targets[0]["path"].as_str().unwrap())
                 .unwrap()
@@ -2663,6 +2667,12 @@ mod tests {
                 .unwrap()
                 .height,
             4
+        );
+        assert_eq!(
+            RgbFrame::from_png_path(targets[2]["path"].as_str().unwrap())
+                .unwrap()
+                .height,
+            8
         );
     }
 

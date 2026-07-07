@@ -81,8 +81,8 @@ Everything else is separated so old and new processes do not collide:
 | --- | --- | --- | --- |
 | 1-5 profile slots, compatible profile JSON, unknown-field tolerance | Proven | core/profile tests, verifier state/profile contracts | None known for current schema |
 | Shared state geometry, last profile, and global screenshot retention | Proven | window layout tests, max-alerts state compatibility tests, packaged geometry smoke | DPI-specific restore is tested with tolerance, not every monitor topology |
-| Template import from files | Proven | backend gallery workflow, WebView visual smoke | Broad user image corpus not exhaustively sampled |
-| Clipboard/path paste templates | Proven | clipboard import tests, frontend paste guards, packaged WebView clipboard smoke for CF_DIB bitmap paste and CF_HDROP file-list paste | Every clipboard producer and image codec is not exhaustively sampled |
+| Template import from files | Proven | backend gallery workflow, core JPG/BMP/WEBP conversion test, packaged WebView visual smoke importing PNG/JPG/JPEG/BMP through the visible path UI | Broad real-world user image corpus and WebP through the visible UI are not exhaustively sampled |
+| Clipboard/path paste templates | Proven | clipboard import tests, frontend paste guards, packaged WebView clipboard smoke for CF_DIB bitmap paste and CF_HDROP image-file paste | Every clipboard producer and image codec is not exhaustively sampled |
 | Capture selected screen/window as template | Proven | desktop capture gates, WebView gallery capture-source smoke | Third-party hardware-accelerated/minimized windows can still return stale/black frames |
 | Template naming, prune limit, reorder, delete, clear | Proven | profile tests, backend gallery workflow, WebView gallery smoke | None known |
 | Target enable/disable and select-all/invert | Proven | core/frontend tests, WebView gallery smoke, frontend `profileToggleAllLabel` parity test, migration visible workflow contract | None known |

@@ -1179,9 +1179,10 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   port, a visible helper window source, real source-preview refreshes, app-window
   resize/scroll/restore, and native window screenshots. `npm run
   webview:visual:smoke -- --gate gallery` passed against the same packaged
-  WebView path with generated PNG imports, target enable/toggle-all actions,
-  row-button reorder, drag/drop reorder, hit-count context menu clear, delete,
-  clear-all, and screenshot-as-template capture. `npm run manual:evidence --
+  WebView path with generated PNG/JPG/JPEG/BMP path imports, target
+  enable/toggle-all actions, row-button reorder, drag/drop reorder, hit-count
+  context menu clear, delete, clear-all, and screenshot-as-template capture.
+  `npm run manual:evidence --
   -Status` then reported `pass=6, blocked=1, fail=0, missing=1, incomplete=0,
   invalid=0`; only the real OCR model smoke remains blocked by missing external
   model assets, and only the packaged tray menu/icon click smoke remains

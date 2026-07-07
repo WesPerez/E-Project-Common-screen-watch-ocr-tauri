@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -1396,6 +1396,86 @@ function pngBuffer(width, height, color) {
   ]);
 }
 
+function bmpBuffer(width, height, color) {
+  const rowStride = Math.ceil((width * 3) / 4) * 4;
+  const pixelBytes = rowStride * height;
+  const headerBytes = 54;
+  const buffer = Buffer.alloc(headerBytes + pixelBytes);
+  buffer.write("BM", 0, "ascii");
+  buffer.writeUInt32LE(buffer.length, 2);
+  buffer.writeUInt32LE(headerBytes, 10);
+  buffer.writeUInt32LE(40, 14);
+  buffer.writeInt32LE(width, 18);
+  buffer.writeInt32LE(height, 22);
+  buffer.writeUInt16LE(1, 26);
+  buffer.writeUInt16LE(24, 28);
+  buffer.writeUInt32LE(0, 30);
+  buffer.writeUInt32LE(pixelBytes, 34);
+  buffer.writeInt32LE(2835, 38);
+  buffer.writeInt32LE(2835, 42);
+
+  for (let y = 0; y < height; y += 1) {
+    const row = headerBytes + (height - 1 - y) * rowStride;
+    for (let x = 0; x < width; x += 1) {
+      const offset = row + x * 3;
+      buffer[offset] = color[2];
+      buffer[offset + 1] = color[1];
+      buffer[offset + 2] = color[0];
+    }
+  }
+
+  return buffer;
+}
+
+function writeJpegImage(file, width, height, color) {
+  const script = `
+$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Drawing
+$Spec = $env:SCREENWATCH_SMOKE_JPEG_SPEC | ConvertFrom-Json
+$Path = [string]$Spec.path
+$Width = [int]$Spec.width
+$Height = [int]$Spec.height
+$Red = [int]$Spec.color[0]
+$Green = [int]$Spec.color[1]
+$Blue = [int]$Spec.color[2]
+$bitmap = New-Object System.Drawing.Bitmap($Width, $Height)
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+try {
+  $graphics.Clear([System.Drawing.Color]::FromArgb($Red, $Green, $Blue))
+  $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+} finally {
+  $graphics.Dispose()
+  $bitmap.Dispose()
+}
+`;
+  const result = spawnSync(
+    "powershell",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      script,
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        SCREENWATCH_SMOKE_JPEG_SPEC: JSON.stringify({ path: file, width, height, color }),
+      },
+    },
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `failed to generate jpeg smoke input ${file}: ${result.stderr || result.stdout}`,
+    );
+  }
+}
+
 function pngChunk(type, data) {
   const typeBuffer = Buffer.from(type, "ascii");
   const length = Buffer.alloc(4);
@@ -1426,14 +1506,22 @@ function crc32(buffer) {
 function createInputImages() {
   ensureDir(inputDir);
   const specs = [
-    ["target-red.png", [210, 62, 62]],
-    ["target-green.png", [45, 150, 95]],
-    ["target-blue.png", [55, 107, 210]],
-    ["target-gold.png", [218, 162, 48]],
+    { name: "target-red.png", format: "png", color: [210, 62, 62] },
+    { name: "target-green.jpg", format: "jpeg", color: [45, 150, 95] },
+    { name: "target-blue.jpeg", format: "jpeg", color: [55, 107, 210] },
+    { name: "target-gold.bmp", format: "bmp", color: [218, 162, 48] },
   ];
-  return specs.map(([name, color]) => {
-    const file = path.join(inputDir, name);
-    fs.writeFileSync(file, pngBuffer(96, 64, color));
+  return specs.map((spec) => {
+    const file = path.join(inputDir, spec.name);
+    if (spec.format === "png") {
+      fs.writeFileSync(file, pngBuffer(96, 64, spec.color));
+    } else if (spec.format === "bmp") {
+      fs.writeFileSync(file, bmpBuffer(96, 64, spec.color));
+    } else if (spec.format === "jpeg") {
+      writeJpegImage(file, 96, 64, spec.color);
+    } else {
+      throw new Error(`unsupported smoke image format: ${spec.format}`);
+    }
     return file;
   });
 }
@@ -2517,14 +2605,14 @@ function writeEvidenceRecords(summary) {
         gateTitle: "Template Gallery Visual Workflow Smoke",
         status: "pass",
         observed:
-          "automated real WebView2/CDP smoke imported four generated PNG templates into an isolated profile, preserved thumbnail geometry and selection, toggled target enablement, exercised select-all/invert, used row-button reorder, exercised drag/drop reorder, opened the hit-count context menu and cleared hits, deleted one target, cleared all targets, and captured the current source as a new template",
+          "automated real WebView2/CDP smoke imported generated PNG, JPG, JPEG, and BMP templates into an isolated profile through the visible path-import UI, preserved thumbnail geometry and selection, toggled target enablement, exercised select-all/invert, used row-button reorder, exercised drag/drop reorder, opened the hit-count context menu and cleared hits, deleted one target, cleared all targets, and captured the current source as a new template",
         evidenceFiles: [
           resultPath,
           appLogPath,
           ...summary.gates.gallery.screenshots,
         ],
         remainingRisk:
-          "proves the current packaged WebView2/gallery workflow against isolated generated images and a real screen capture source; it does not prove every user image codec or long-running manual editing session",
+          "proves the current packaged WebView2/gallery workflow against generated PNG/JPG/JPEG/BMP images and a real screen capture source; broader user image corpora, WebP via the visible UI, and long-running manual editing sessions are not exhaustively sampled",
       }),
       "utf8",
     );
