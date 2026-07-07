@@ -74,6 +74,12 @@ python -m unittest discover -s tests -v
   sections, region fields, match/retention fields, run actions, status text,
   log headers, and resizable layout splitters are locked by
   `legacyUiSurfaceContract`.
+- Legacy GUI default settings must stay aligned across Python initialization,
+  Python profile loading, Tauri HTML input defaults, Tauri frontend
+  `buildProfileOptions()` and `applyProfileMatch()` fallbacks, and Rust profile
+  defaults. Threshold, scales, interval, cooldown, beep settings, max template
+  count, max alert count, region defaults, and first-monitor default selection
+  are locked by `legacyDefaultSettingsContract`.
 - Backend Tauri commands must remain reachable; the verifier fails if a
   `#[tauri::command]` function is missing from `generate_handler![...]` or if
   the handler list contains a non-command function.

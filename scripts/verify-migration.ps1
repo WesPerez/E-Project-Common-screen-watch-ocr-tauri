@@ -1781,6 +1781,111 @@ function Assert-LegacyUiSurfaceContract {
     Assert-TextContains "legacy UI surface resizable layout tests" $frontendTestSource "resizeMultiPaneLayout"
 }
 
+function Assert-LegacyDefaultSettingsContract {
+    param(
+        [string]$ProjectRootPath,
+        [string]$PythonProjectPath
+    )
+
+    $pythonSource = Get-Content -LiteralPath (Join-Path $PythonProjectPath "src\screen_watch\app.py") -Raw
+    $htmlSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "index.html") -Raw
+    $frontendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\main.js") -Raw
+    $profileSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "crates\screen-watch-core\src\profile.rs") -Raw
+
+    $defaultItems = @(
+        @{
+            Name = "threshold"
+            Legacy = @('self.threshold = DoubleVar(value=0.90)', 'self.threshold.set(match.get("threshold", 0.90))', '"threshold": self.threshold.get()')
+            Html = @('id="profile-threshold" type="number" min="0" max="1" step="0.01" value="0.9"')
+            Frontend = @('threshold: boundedNumber("#profile-threshold", 0.9, 0, 1)', 'match.threshold ?? 0.9')
+            Core = @('fn default_profile_threshold() -> f32', '0.90', '(*threshold - 0.90).abs() < f32::EPSILON')
+        },
+        @{
+            Name = "scales"
+            Legacy = @('self.scales = StringVar(value="1.0")', 'self.scales.set(match.get("scales", "1.0"))', '"scales": self.scales.get()')
+            Html = @('id="profile-scales" type="text" value="1.0"')
+            Frontend = @('scales: document.querySelector("#profile-scales").value.trim() || "1.0"', 'return "1.0";')
+            Core = @('fn default_profile_scales() -> ScaleSpec', 'ScaleSpec::Text("1.0".to_string())', 'matches!(scales, ScaleSpec::Text(value) if value == "1.0")')
+        },
+        @{
+            Name = "interval"
+            Legacy = @('self.interval_ms = IntVar(value=250)', 'self.interval_ms.set(match.get("interval_ms", 250))', 'interval_ms = scan_interval_ms(self.interval_ms.get())')
+            Html = @('id="profile-interval-ms" type="number" min="50" value="250"')
+            Frontend = @('pollIntervalSeconds: Math.max(0.05, numberInput("#profile-interval-ms", 250)) / 1000', 'match.interval_ms ?? 250')
+            Core = @('fn default_profile_poll_interval_seconds() -> f64', '0.25', 'assert_eq!(config.poll_interval_seconds, 0.25);')
+        },
+        @{
+            Name = "cooldown"
+            Legacy = @('self.cooldown = DoubleVar(value=1.0)', 'self.cooldown.set(match.get("cooldown", 1.0))', '"cooldown": self.cooldown.get()')
+            Html = @('id="profile-cooldown" type="number" min="0" step="0.1" value="1"')
+            Frontend = @('cooldownSeconds: Math.max(0, numberInput("#profile-cooldown", 1))', 'match.cooldown ?? 1')
+            Core = @('fn default_profile_cooldown_seconds() -> f64', '1.0', 'assert_eq!(config.cooldown_seconds, 1.0);')
+        },
+        @{
+            Name = "beep"
+            Legacy = @('self.beep = BooleanVar(value=True)', 'self.beep.set(match.get("beep", True))', '"beep": self.beep.get()')
+            Html = @('id="profile-beep" type="checkbox" checked')
+            Frontend = @('beep: document.querySelector("#profile-beep").checked', 'match.beep ?? true')
+            Core = @('fn default_profile_alarm_beep() -> bool', 'true')
+        },
+        @{
+            Name = "beep seconds"
+            Legacy = @('self.beep_seconds = DoubleVar(value=3.0)', 'self.beep_seconds.set(match.get("beep_seconds", match.get("beep_count", 3)))', 'beep_seconds = parse_positive_float(self.beep_seconds.get(), "beep_seconds")')
+            Html = @('id="profile-beep-seconds" type="number" min="0.1" step="0.1" value="3"')
+            Frontend = @('beepSeconds: Math.max(0.1, numberInput("#profile-beep-seconds", 3))', 'match.beep_seconds ?? match.beep_count ?? 3')
+            Core = @('fn default_profile_beep_seconds() -> f64', '3.0', 'assert_eq!(config.alarm.beep_seconds, 3.0);')
+        },
+        @{
+            Name = "beep volume"
+            Legacy = @('self.beep_volume = IntVar(value=100)', 'self.beep_volume.set(match.get("beep_volume", 100))', 'beep_volume = parse_volume(self.beep_volume.get())')
+            Html = @('id="profile-beep-volume" type="number" min="0" max="100" value="100"')
+            Frontend = @('beepVolume: Math.round(boundedNumber("#profile-beep-volume", 100, 0, 100))', 'match.beep_volume ?? 100')
+            Core = @('fn default_profile_beep_volume() -> i32', '100', 'assert_eq!(config.alarm.beep_volume, 100);')
+        },
+        @{
+            Name = "max templates"
+            Legacy = @('self.max_templates = IntVar(value=100)', 'self.max_templates.set(match.get("max_templates", 100))', 'parse_positive_int(self.max_templates.get(), "max_templates")')
+            Html = @('id="profile-max-templates" type="number" min="1" value="100"')
+            Frontend = @('Math.floor(numberInput("#profile-max-templates", 100))', 'match.max_templates ?? 100')
+            Core = @('fn default_profile_max_templates() -> usize', '100')
+        },
+        @{
+            Name = "max alerts"
+            Legacy = @('self.max_alerts = IntVar(value=int(self.state.get("max_alerts", 50)))', 'max_alerts = parse_positive_int(self.max_alerts.get(), "max_alerts")', '"max_alerts": self.max_alerts.get()')
+            Html = @('id="profile-max-alerts" type="number" min="1" value="50"')
+            Frontend = @('legacyMaxAlertsFromState(state)', 'Math.floor(numberInput("#profile-max-alerts", 50))', 'match.max_alerts ?? legacyMaxAlerts ?? 50')
+            Core = @('fn default_profile_max_alerts() -> Option<u32>', 'Some(50)', 'assert_eq!(config.alarm.max_alerts, Some(50));')
+        },
+        @{
+            Name = "region"
+            Legacy = @('self.left = StringVar(value="0")', 'self.top = StringVar(value="0")', 'self.width = StringVar(value="")', 'self.height = StringVar(value="")')
+            Html = @('id="profile-region-left" type="number" value="0"', 'id="profile-region-top" type="number" value="0"', 'id="profile-region-width" type="number" min="1"', 'id="profile-region-height" type="number" min="1"')
+            Frontend = @('left: Math.round(numberInput("#profile-region-left", 0))', 'top: Math.round(numberInput("#profile-region-top", 0))', 'optionalPositiveInteger("#profile-region-width")', 'optionalPositiveInteger("#profile-region-height")', 'region.width ?? ""', 'region.height ?? ""')
+            Core = @('regions: Vec::new()', 'profile_region: None')
+        }
+    )
+
+    foreach ($item in $defaultItems) {
+        foreach ($expected in $item.Legacy) {
+            Assert-TextContains "legacy default '$($item.Name)' in Python app" $pythonSource $expected
+        }
+        foreach ($expected in $item.Html) {
+            Assert-TextContains "legacy default '$($item.Name)' in Tauri HTML" $htmlSource $expected
+        }
+        foreach ($expected in $item.Frontend) {
+            Assert-TextContains "legacy default '$($item.Name)' in Tauri frontend" $frontendSource $expected
+        }
+        foreach ($expected in $item.Core) {
+            Assert-TextContains "legacy default '$($item.Name)' in Rust profile core" $profileSource $expected
+        }
+    }
+
+    Assert-TextContains "legacy default monitor selection in Python" $pythonSource 'var = BooleanVar(value=(monitor["index"] in selected) if selected or had_monitors else i == 0)'
+    Assert-TextContains "legacy default monitor selection in frontend load" $frontendSource "ensureDefaultMonitorSelection();"
+    Assert-TextContains "legacy default monitor selection in frontend source options" $frontendSource "selectedMonitorIndexes"
+    Assert-TextContains "legacy GUI default Rust test name" $profileSource "profile_watch_config_uses_enabled_targets_and_gui_defaults"
+}
+
 function Assert-LegacyProfilePersistenceContract {
     param(
         [string]$ProjectRootPath,
@@ -2191,6 +2296,7 @@ $summary = [ordered]@{
     frontendDynamicTargetContract = $null
     legacyVisibleWorkflowContract = $null
     legacyUiSurfaceContract = $null
+    legacyDefaultSettingsContract = $null
     legacyProfilePersistenceContract = $null
     audioAlarmParityContract = $null
     frontendOcrReadinessContract = $null
@@ -2528,6 +2634,13 @@ Invoke-CapturedStep `
     -Script { Assert-LegacyUiSurfaceContract $ProjectRootPath $PythonProjectPath } `
     -SuppressOutput | Out-Null
 $summary.legacyUiSurfaceContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Legacy default settings contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-LegacyDefaultSettingsContract $ProjectRootPath $PythonProjectPath } `
+    -SuppressOutput | Out-Null
+$summary.legacyDefaultSettingsContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Legacy profile persistence contract" `
