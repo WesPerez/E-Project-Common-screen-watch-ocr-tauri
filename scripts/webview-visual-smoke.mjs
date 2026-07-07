@@ -2661,6 +2661,18 @@ function buildInfoEvidenceText(buildInfo) {
   return parts.join("; ");
 }
 
+function modelImageEvidenceDirsText() {
+  const parts = [];
+  if (fs.existsSync(inputDir)) {
+    parts.push(`inputDir=${inputDir}`);
+  } else {
+    parts.push("generated input fixture directory was not retained for this focused gate");
+  }
+  parts.push(`localAppData=${localAppData}`);
+  parts.push(`evidenceLogDir=${evidenceLogDir}`);
+  return parts.join("; ");
+}
+
 function evidenceRecord({ gateTitle, status, observed, evidenceFiles, remainingRisk }) {
   const actualExeHash = fs.existsSync(exePath) ? fileSha256(exePath) : "missing";
   const buildInfo = readBuildInfo(actualExeHash);
@@ -2677,7 +2689,7 @@ function evidenceRecord({ gateTitle, status, observed, evidenceFiles, remainingR
     "Worktree note: Tauri repo present; smoke used isolated LOCALAPPDATA and did not modify the Python baseline",
     `Command(s) and exit code(s): ${smokeCommandText()}; exit 0`,
     `Release build-info hash: ${releaseHash}`,
-    `Model/image/evidence dirs: inputDir=${inputDir}; localAppData=${localAppData}; evidenceLogDir=${evidenceLogDir}`,
+    `Model/image/evidence dirs: ${modelImageEvidenceDirsText()}`,
     `Observed result: ${observed}`,
     `Evidence files: ${relativeList(evidenceFiles)}`,
     "Cleanup performed: stopped the test-owned app process and helper window process; retained isolated target/webview-visual-smoke run directory and evidence screenshots/logs for audit",
