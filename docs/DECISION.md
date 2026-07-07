@@ -18,6 +18,18 @@ reason Rust/Tauri is the best fit here is the balance:
 - The OCR runtime can stay behind a Cargo feature, so the `lite` executable
   does not accidentally inherit OCR inference dependencies as the project grows.
 
+This small-exe conclusion has an important Windows runtime boundary. Tauri uses
+Microsoft Edge WebView2 on Windows instead of bundling Chromium. Tauri's
+official WebView documentation states that WebView2 is preinstalled on Windows
+11, and that on versions older than Windows 11 the Tauri-generated installer is
+the mechanism that ensures WebView2 is installed:
+https://v2.tauri.app/reference/webview-versions/#webview2-windows. The final
+single exe is therefore the right artifact for WebView2-present Windows
+machines. A machine without WebView2 needs the installer or a separate WebView2
+installation first; bundling an offline/fixed WebView2 runtime would add roughly
+127-180 MiB according to Tauri's config reference:
+https://v2.tauri.app/reference/config/#webviewinstallmode.
+
 Measured on this machine:
 
 | Build | File | Size |

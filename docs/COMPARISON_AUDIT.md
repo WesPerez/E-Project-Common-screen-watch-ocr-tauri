@@ -14,6 +14,17 @@ future.
 - SHA-256: `426BE3C7CDA81186BF4B04381E04C7A850B9AD13CAB494AF7065E7296205B911`
 - Build flavor: lite, OCR models external
 - Functional source state: current UI/monitoring fix set
+- Runtime boundary: this tiny single exe uses the system Microsoft Edge
+  WebView2 runtime. The current test machine has WebView2 Runtime
+  `149.0.4022.98` at
+  `C:\Program Files (x86)\Microsoft\EdgeWebView\Application\149.0.4022.98\msedgewebview2.exe`.
+  Tauri's official WebView documentation says WebView2 is preinstalled on
+  Windows 11, while older Windows versions rely on the installer to ensure
+  WebView2 is installed:
+  https://v2.tauri.app/reference/webview-versions/#webview2-windows.
+  Therefore the single exe is proven on WebView2-present Windows machines; a
+  machine without WebView2 needs the NSIS installer or a separate WebView2
+  installation first.
 
 ## Identity And Data Boundary
 
@@ -47,6 +58,7 @@ Everything else is separated so old and new processes do not collide:
 | Tray menu smoke | final SHA-256 `426BE3C...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`, tray menu PID matched Tauri PID, exit code 0; old Python tray/processes were not touched |
 | WebView visual smoke | final SHA-256 `426BE3C...` was explicitly launched through `--exe-path .\release-single\ScreenWatchOCRTauri.exe` and passed source preview, template gallery, clipboard paste, one-shot scan, monitoring restart, layout resize, legacy profile, and legacy late-start remembered app-window recovery in packaged WebView2 runs. The late-start smoke loaded an old Python-shaped profile while the remembered app was absent, recorded `skippedWindowApps=1`, then started the app later and scanned/monitored with positive hits without refreshing or reselecting. Clipboard smoke verified CF_DIB bitmap paste and CF_HDROP Ctrl+V file paste with compact target thumbs inside fixed-size cards; monitoring restart recorded generation 1 then 2 with positive tick/hit counts and the button restored to `开始监控`; layout smoke measured all splitters with no horizontal overflow |
 | WebView monitoring soak | final SHA-256 `426BE3C...` was explicitly launched through `--exe-path .\release-single\ScreenWatchOCRTauri.exe` and ran profile monitoring for 120,000ms with 61 UI samples, tick delta 220, hit delta 220, progress-log delta 47, and stopped with the button restored to `开始监控` |
+| WebView2 runtime boundary | Local read-only runtime audit found Microsoft Edge WebView2 Runtime `149.0.4022.98`; Tauri official docs confirm WebView2 is preinstalled on Windows 11 and installer-handled on older Windows versions | Final single-exe smoke proves this machine and other WebView2-present Windows machines; it does not prove machines where WebView2 has been removed or was never installed |
 | Portable package verification | latest lite portable 1,616,206 bytes is freshly content-verified from the current lite build-info; full portable 3,749,839 bytes remains the latest historical full package verification; final user deliverable is the fresh single exe |
 | Template benchmark | 2560x1440, 8 templates: Rust flat 81ms 8/8, Rust textured 509ms 8/8; Python/OpenCV flat 59ms 8/8, Python/OpenCV textured 58ms with the known 4/8 odd-phase baseline miss |
 | Production template smoke | profile_1 real templates: 18/18 matched on 2560x1440 synthetic placement; 6583ms recorded |
@@ -89,6 +101,7 @@ Everything else is separated so old and new processes do not collide:
 | Single-instance wake | Proven | packaged smoke | None known |
 | Startup shortcut | Proven by tests | startup path/status tests | Creating/removing real user startup shortcut is not performed during smoke |
 | Lite package size | Proven | verifier lite size gate | Full OCR build remains larger but still far below Python baseline |
+| Single exe launch on arbitrary Windows PCs | Proven with boundary | final single exe smokes plus local WebView2 audit | Machines without WebView2 need the installer or WebView2 installed first; the tiny single exe intentionally does not bundle a browser engine |
 | Installer repeatability | Historical pass | manual evidence records lite/full installer smoke | Not rerun after the current UI/monitoring fix; current single-file exe smoke is fresh |
 | Portable package lite/full | Fresh lite pass, historical full pass | package verifier produced and content-verified a fresh lite portable zip after the current UI/monitoring fix; full portable zip verification is historical | None known for lite package contents; final user deliverable remains the single exe |
 
@@ -98,7 +111,11 @@ The Tauri lite app is the preferred replacement for the current packaged Python
 desktop app when the workflow is template/pixel detection, screen/window
 capture, profile/template management, tray/startup behavior, and a small
 single-file executable. The current delivered exe is about 3.42 MiB versus the
-recorded Python/PyInstaller baseline of 102,021,797 bytes.
+recorded Python/PyInstaller baseline of 102,021,797 bytes. The precise wording
+for distribution is: the single exe runs on Windows machines that already have
+Microsoft Edge WebView2 Runtime, which is the normal Windows 11 case and the
+case verified on this machine. For older or locked-down Windows machines where
+WebView2 is absent, use the Tauri/NSIS installer or install WebView2 first.
 
 Do not claim broad OCR model parity with the Python RapidOCR/PP-OCRv6 path yet.
 The new app has a working optional OCR architecture, a Python-vs-Rust OCR text
