@@ -1476,6 +1476,13 @@ try {
   }
 }
 
+const WEBP_SMOKE_IMAGE_BASE64 =
+  "UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AA/vuUAAA=";
+
+function writeWebpImage(file) {
+  fs.writeFileSync(file, Buffer.from(WEBP_SMOKE_IMAGE_BASE64, "base64"));
+}
+
 function pngChunk(type, data) {
   const typeBuffer = Buffer.from(type, "ascii");
   const length = Buffer.alloc(4);
@@ -1510,6 +1517,7 @@ function createInputImages() {
     { name: "target-green.jpg", format: "jpeg", color: [45, 150, 95] },
     { name: "target-blue.jpeg", format: "jpeg", color: [55, 107, 210] },
     { name: "target-gold.bmp", format: "bmp", color: [218, 162, 48] },
+    { name: "target-violet.webp", format: "webp" },
   ];
   return specs.map((spec) => {
     const file = path.join(inputDir, spec.name);
@@ -1519,6 +1527,8 @@ function createInputImages() {
       fs.writeFileSync(file, bmpBuffer(96, 64, spec.color));
     } else if (spec.format === "jpeg") {
       writeJpegImage(file, 96, 64, spec.color);
+    } else if (spec.format === "webp") {
+      writeWebpImage(file);
     } else {
       throw new Error(`unsupported smoke image format: ${spec.format}`);
     }
@@ -2260,6 +2270,7 @@ async function runGalleryGate() {
   await sleep(500);
   await clearAllProfileTargetsForSmoke();
   const images = createInputImages();
+  const importedCount = images.length;
   const importedState = await importProfileImages(images);
   const oversizedCards = importedState.cards.filter((card) =>
     card.card.width > 52 ||
@@ -2271,7 +2282,7 @@ async function runGalleryGate() {
   }
   setFirstTargetHitCount(7);
   await clickSelector("#profile-load");
-  await waitForCardCount(4);
+  await waitForCardCount(importedCount);
   await scrollProfileTargetsIntoView();
   const importedScreenshot = await captureScreenshot("template-gallery-imported");
 
@@ -2284,7 +2295,7 @@ async function runGalleryGate() {
   await clickSelector("#profile-toggle-all");
   await waitFor(async () => {
     const state = await galleryState();
-    return state.cards.length === 4 && state.status.includes("启用") ? state : null;
+    return state.cards.length === importedCount && state.status.includes("启用") ? state : null;
   }, "toggle-all profile status", 20000, 500);
 
   await evalJs(`(() => {
@@ -2348,7 +2359,7 @@ async function runGalleryGate() {
     del?.click();
     return Boolean(del);
   })()`);
-  const afterDeleteState = await waitForCardCount(3);
+  const afterDeleteState = await waitForCardCount(importedCount - 1);
 
   await evalJs(`(() => {
     window.confirm = () => true;
@@ -2605,14 +2616,14 @@ function writeEvidenceRecords(summary) {
         gateTitle: "Template Gallery Visual Workflow Smoke",
         status: "pass",
         observed:
-          "automated real WebView2/CDP smoke imported generated PNG, JPG, JPEG, and BMP templates into an isolated profile through the visible path-import UI, preserved thumbnail geometry and selection, toggled target enablement, exercised select-all/invert, used row-button reorder, exercised drag/drop reorder, opened the hit-count context menu and cleared hits, deleted one target, cleared all targets, and captured the current source as a new template",
+          "automated real WebView2/CDP smoke imported generated PNG, JPG, JPEG, BMP, and WebP templates into an isolated profile through the visible path-import UI, preserved thumbnail geometry and selection, toggled target enablement, exercised select-all/invert, used row-button reorder, exercised drag/drop reorder, opened the hit-count context menu and cleared hits, deleted one target, cleared all targets, and captured the current source as a new template",
         evidenceFiles: [
           resultPath,
           appLogPath,
           ...summary.gates.gallery.screenshots,
         ],
         remainingRisk:
-          "proves the current packaged WebView2/gallery workflow against generated PNG/JPG/JPEG/BMP images and a real screen capture source; broader user image corpora, WebP via the visible UI, and long-running manual editing sessions are not exhaustively sampled",
+          "proves the current packaged WebView2/gallery workflow against generated PNG/JPG/JPEG/BMP/WebP images and a real screen capture source; broader user image corpora and long-running manual editing sessions are not exhaustively sampled",
       }),
       "utf8",
     );
