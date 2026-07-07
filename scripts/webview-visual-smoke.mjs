@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +10,7 @@ const windowsProjectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const exePath = path.join(
+const defaultExePath = path.join(
   windowsProjectRoot,
   "target",
   "release",
@@ -31,6 +32,9 @@ const buildInfoPath = path.join(
 const args = new Set(process.argv.slice(2));
 const shouldWriteRecords = !args.has("--no-record");
 const gateMode = valueArg("--gate") || "all";
+const exePath = path.resolve(
+  valueArg("--exe-path") || process.env.SCREENWATCH_WEBVIEW_SMOKE_EXE || defaultExePath,
+);
 const monitoringSoakMs = clampNumber(
   numberArg(
     "--soak-ms",
@@ -449,6 +453,18 @@ async function clickSelector(selector) {
     if (!item) return false;
     item.click();
     return true;
+  })()`);
+}
+
+async function buttonState(selector) {
+  return evalJs(`(() => {
+    const item = document.querySelector(${JSON.stringify(selector)});
+    return item ? {
+      exists: true,
+      disabled: Boolean(item.disabled),
+      text: item.textContent || '',
+      title: item.getAttribute('title') || '',
+    } : { exists: false };
   })()`);
 }
 
@@ -1464,6 +1480,46 @@ async function waitForCardCount(count) {
   }, `${count} profile target card(s)`, 25000, 500);
 }
 
+async function captureProfileTargetForSmoke(description) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    await waitFor(async () => {
+      const state = await buttonState("#profile-capture-target");
+      return state.exists && !state.disabled ? state : null;
+    }, `${description} capture button ready`, 10000, 250);
+    await waitForReadyStatus();
+    await clickSelector("#profile-capture-target");
+    try {
+      return await waitForCardCount(1);
+    } catch (error) {
+      lastError = error;
+      const state = await evalJs(`(() => ({
+        gallery: {
+          status: document.querySelector('#status')?.textContent || '',
+          summary: document.querySelector('#profile-summary')?.textContent || '',
+          cards: document.querySelectorAll('.target-card').length,
+        },
+        captureButton: {
+          exists: Boolean(document.querySelector('#profile-capture-target')),
+          disabled: Boolean(document.querySelector('#profile-capture-target')?.disabled),
+          text: document.querySelector('#profile-capture-target')?.textContent || '',
+        },
+        selectedSources: {
+          monitors: [...document.querySelectorAll('#monitors input[type="checkbox"]')].filter((item) => item.checked).length,
+          windows: [...document.querySelectorAll('#windows input[type="checkbox"]')].filter((item) => item.checked).length,
+        },
+      }))()`);
+      log(`${description} capture attempt ${attempt} did not create a card`, state);
+      if (attempt < 2) {
+        await sleep(1000);
+      }
+    }
+  }
+  throw new Error(
+    `${description} failed to capture a profile target after retry: ${lastError?.message || lastError}`,
+  );
+}
+
 async function setMonitoringSmokeInputs() {
   await evalJs(`(() => {
     const setValue = (selector, value) => {
@@ -1777,8 +1833,7 @@ async function runOneShotScanGate() {
   }, "exclusive helper window source for one-shot scan", 20000, 500);
   await setMonitoringSmokeInputs();
   await clearAllProfileTargetsForSmoke();
-  await clickSelector("#profile-capture-target");
-  const capturedTargetState = await waitForCardCount(1);
+  const capturedTargetState = await captureProfileTargetForSmoke("one-shot scan");
   await scrollProfileTargetsIntoView();
   const preparedScreenshot = await captureScreenshot("profile-one-shot-scan-prepared");
 
@@ -1829,8 +1884,7 @@ async function runMonitoringGate() {
   }, "exclusive helper window source", 20000, 500);
   await setMonitoringSmokeInputs();
   await clearAllProfileTargetsForSmoke();
-  await clickSelector("#profile-capture-target");
-  const capturedTargetState = await waitForCardCount(1);
+  const capturedTargetState = await captureProfileTargetForSmoke("monitoring restart");
   await scrollProfileTargetsIntoView();
   const preparedScreenshot = await captureScreenshot("profile-monitoring-prepared");
 
@@ -1899,8 +1953,7 @@ async function runMonitoringSoakGate() {
   }, "exclusive helper window source for monitoring soak", 20000, 500);
   await setMonitoringSmokeInputs();
   await clearAllProfileTargetsForSmoke();
-  await clickSelector("#profile-capture-target");
-  const capturedTargetState = await waitForCardCount(1);
+  const capturedTargetState = await captureProfileTargetForSmoke("monitoring soak");
   await scrollProfileTargetsIntoView();
   const preparedScreenshot = await captureScreenshot("profile-monitoring-soak-prepared");
 
@@ -2191,8 +2244,7 @@ async function runGalleryGate() {
   const clearedScreenshot = await captureScreenshot("template-gallery-cleared");
 
   await selectVisualSources();
-  await clickSelector("#profile-capture-target");
-  const capturedTargetState = await waitForCardCount(1);
+  const capturedTargetState = await captureProfileTargetForSmoke("template gallery source capture");
   await scrollProfileTargetsIntoView();
   const capturedScreenshot = await captureScreenshot("template-gallery-captured-source");
 
@@ -2315,18 +2367,39 @@ function relativeList(files) {
   return files.map((file) => path.relative(windowsProjectRoot, file)).join("; ");
 }
 
+function relativePath(file) {
+  const relative = path.relative(windowsProjectRoot, file);
+  return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : file;
+}
+
+function fileSha256(file) {
+  return createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+}
+
+function smokeCommandText() {
+  const quotedArgs = process.argv.slice(2).map((arg) =>
+    /[\s"]/.test(arg) ? JSON.stringify(arg) : arg,
+  );
+  return `node scripts/webview-visual-smoke.mjs${quotedArgs.length ? ` ${quotedArgs.join(" ")}` : ""}`;
+}
+
 function evidenceRecord({ gateTitle, status, observed, evidenceFiles, remainingRisk }) {
   const buildInfo = readBuildInfo();
-  const releaseHash = buildInfo.executableSha256
-    ? `executableSha256=${buildInfo.executableSha256}; buildInfo=${path.relative(windowsProjectRoot, buildInfo.path)}`
-    : `build-info unavailable at ${buildInfo.path}`;
+  const actualExeHash = fs.existsSync(exePath) ? fileSha256(exePath) : "missing";
+  const releaseHash = [
+    `actualExeSha256=${actualExeHash}`,
+    `exePath=${relativePath(exePath)}`,
+    buildInfo.executableSha256
+      ? `buildInfoExecutableSha256=${buildInfo.executableSha256}; buildInfo=${relativePath(buildInfo.path)}`
+      : `build-info unavailable at ${buildInfo.path}`,
+  ].join("; ");
   return [
     `Gate: ${gateTitle}`,
     `Completion status: ${status}`,
     `Date/time: ${new Date().toISOString()}`,
     `Machine: ${os.hostname()}`,
     "Worktree note: Tauri repo present; smoke used isolated LOCALAPPDATA and did not modify the Python baseline",
-    `Command(s) and exit code(s): node scripts/webview-visual-smoke.mjs --gate ${gateMode}; exit 0`,
+    `Command(s) and exit code(s): ${smokeCommandText()}; exit 0`,
     `Release build-info hash: ${releaseHash}`,
     `Model/image/evidence dirs: inputDir=${inputDir}; localAppData=${localAppData}; evidenceLogDir=${evidenceLogDir}`,
     `Observed result: ${observed}`,

@@ -168,6 +168,12 @@ release exe on an interactive Windows desktop:
 npm run webview:visual:smoke -- --gate source
 ```
 
+For final single-file signoff, pass the delivered exe explicitly:
+
+```powershell
+node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe --gate source
+```
+
 Manual steps:
 
 - Select at least one physical screen source and at least one visible app-window
@@ -375,6 +381,13 @@ release exe on an interactive Windows desktop:
 
 ```powershell
 npm run webview:monitoring:soak
+```
+
+For final single-file signoff with the same 120-second duration used by the
+latest audit:
+
+```powershell
+node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe --gate monitoring-soak --soak-ms 120000
 ```
 
 The default soak duration is 60 seconds. For focused local debugging, pass a
