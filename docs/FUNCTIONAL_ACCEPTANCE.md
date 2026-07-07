@@ -69,6 +69,11 @@ python -m unittest discover -s tests -v
   source preview, region/match settings, start/stop monitoring, one-shot scan,
   event log, and evidence-directory opening must each have a visible control,
   frontend handler, and registered backend command where applicable.
+- Legacy visible surface information must remain represented in the compact
+  Tauri UI: profile/startup controls, template gallery actions, source/preview
+  sections, region fields, match/retention fields, run actions, status text,
+  log headers, and resizable layout splitters are locked by
+  `legacyUiSurfaceContract`.
 - Backend Tauri commands must remain reachable; the verifier fails if a
   `#[tauri::command]` function is missing from `generate_handler![...]` or if
   the handler list contains a non-command function.

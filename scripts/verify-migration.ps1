@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$PythonProject = "",
     [int]$MinimumPythonTests = 98,
     [int]$MinimumRustCoreTests = 120,
@@ -24,6 +24,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$PSDefaultParameterValues["Get-Content:Encoding"] = "UTF8"
 
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRootPath = (Resolve-Path (Join-Path $ScriptRoot "..")).Path
@@ -1706,6 +1707,80 @@ function Assert-LegacyVisibleWorkflowContract {
     Assert-TextContains "frontend target select button parity test" $frontendTestSource 'profileToggleAllLabel({ targets: [{ enabled: true }, {}] })'
 }
 
+function Assert-LegacyUiSurfaceContract {
+    param(
+        [string]$ProjectRootPath,
+        [string]$PythonProjectPath
+    )
+
+    $pythonSource = Get-Content -LiteralPath (Join-Path $PythonProjectPath "src\screen_watch\app.py") -Raw
+    $htmlSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "index.html") -Raw
+    $frontendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\main.js") -Raw
+    $frontendBehaviorSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.js") -Raw
+    $frontendTestSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.test.js") -Raw
+    $tauriSurface = "$htmlSource`n$frontendSource`n$frontendBehaviorSource`n$frontendTestSource"
+
+    $surfaceItems = @(
+        @{
+            Name = "profile slot and startup controls"
+            Legacy = @('ttk.Label(profile_bar, text="配置位")', '"开机自启"', 'values=list(range(1, PROFILE_COUNT + 1))')
+            Tauri = @('配置位', '开机自启', 'id="profile-number"', '<option value="1">1</option>', '<option value="5">5</option>', 'id="startup-toggle"')
+        },
+        @{
+            Name = "template gallery toolbar"
+            Legacy = @('"上传图片"', '"粘贴图片"', '"截图作模板"', '"删除选中"', '"清空"', '"匹配图片"')
+            Tauri = @('上传图片', '粘贴图片', '截图作模板', '删除选中', '清空', '匹配图片', 'id="profile-select-pngs"', 'id="profile-paste-images"', 'id="profile-capture-target"', 'id="profile-delete-selected"', 'id="profile-clear-all"')
+        },
+        @{
+            Name = "target selection and summary"
+            Legacy = @('text="全选"', 'text="反选"', '当前 {len(self.targets)} 张模板，启用 {len(self.enabled_targets())} 张')
+            Tauri = @('全选', '反选', '当前 ${totalCount} 张模板，启用 ${enabledCount} 张', 'id="profile-summary"', 'profileToggleAllLabel')
+        },
+        @{
+            Name = "source and preview controls"
+            Legacy = @('"监控屏幕"', '"监控应用"', '"刷新屏幕"', 'self.window_combo', '"来源预览"')
+            Tauri = @('监控屏幕', '监控应用', '刷新应用', '来源预览', '刷新预览', '抓取预览', '抓取窗口', 'id="monitors"', 'id="windows"', 'id="source-previews"')
+        },
+        @{
+            Name = "region fields"
+            Legacy = @('"区域"', '("左", self.left)', '("上", self.top)', '("宽(空=全屏)", self.width)', '("高(空=全屏)", self.height)')
+            Tauri = @('区域', '左', '上', '宽(空=全屏)', '高(空=全屏)', 'id="profile-region-left"', 'id="profile-region-top"', 'id="profile-region-width"', 'id="profile-region-height"')
+        },
+        @{
+            Name = "match and retention settings"
+            Legacy = @('"匹配"', '"阈值"', '"缩放"', '"间隔ms"', '"同图冷却秒"', '"蜂鸣秒"', '"蜂鸣音量"', '"模板最多张"', '"截图最多张"')
+            Tauri = @('匹配', '阈值', '缩放', '间隔ms', '同图冷却秒', '蜂鸣秒', '蜂鸣音量', '模板最多张', '截图最多张', '命中蜂鸣', 'id="profile-threshold"', 'id="profile-scales"', 'id="profile-interval-ms"', 'id="profile-cooldown"', 'id="profile-beep-seconds"', 'id="profile-beep-volume"', 'id="profile-max-templates"', 'id="profile-max-alerts"')
+        },
+        @{
+            Name = "run actions and evidence"
+            Legacy = @('"运行"', '"开始监控"', '"停止监控"', '"扫描一次"', '"打开证据目录"')
+            Tauri = @('运行', '开始监控', '停止监控', '扫描一次', '打开证据目录', 'id="profile-monitor-start"', 'id="profile-scan-once"', 'id="open-evidence-dir"')
+        },
+        @{
+            Name = "status, log, and evidence feedback"
+            Legacy = @('self.status = StringVar', '"报警与扫描日志"', 'columns=("time", "message")', 'self.log.heading("time", text="时间")', 'self.log.heading("message", text="事件")', 'self.log.insert("", 0', 'self.status.set')
+            Tauri = @('id="status"', '报警与扫描日志', '<th>时间</th>', '<th>事件</th>', 'id="event-log"', 'appendLog', 'scanStatusText', 'monitoringStatusText')
+        }
+    )
+
+    foreach ($item in $surfaceItems) {
+        foreach ($expected in $item.Legacy) {
+            Assert-TextContains "legacy UI surface '$($item.Name)' in Python app" $pythonSource $expected
+        }
+        foreach ($expected in $item.Tauri) {
+            Assert-TextContains "legacy UI surface '$($item.Name)' in Tauri app" $tauriSurface $expected
+        }
+    }
+
+    Assert-TextContains "legacy UI surface compact layout app grid" $htmlSource 'id="app-grid"'
+    Assert-TextContains "legacy UI surface compact layout target/control split" $htmlSource 'data-splitter="targets-controls"'
+    Assert-TextContains "legacy UI surface compact layout control/preview split" $htmlSource 'data-splitter="controls-preview"'
+    Assert-TextContains "legacy UI surface compact layout target/log split" $htmlSource 'data-splitter="targets-log"'
+    Assert-TextContains "legacy UI surface resizable layout tests" $frontendTestSource "resizeThreePaneLayout"
+    Assert-TextContains "legacy UI surface resizable layout tests" $frontendTestSource "resizeStackedPaneLayout"
+    Assert-TextContains "legacy UI surface resizable layout tests" $frontendTestSource "resizeMultiPaneLayout"
+}
+
 function Assert-LegacyProfilePersistenceContract {
     param(
         [string]$ProjectRootPath,
@@ -2115,6 +2190,7 @@ $summary = [ordered]@{
     frontendActionBindingContract = $null
     frontendDynamicTargetContract = $null
     legacyVisibleWorkflowContract = $null
+    legacyUiSurfaceContract = $null
     legacyProfilePersistenceContract = $null
     audioAlarmParityContract = $null
     frontendOcrReadinessContract = $null
@@ -2445,6 +2521,13 @@ Invoke-CapturedStep `
     -Script { Assert-LegacyVisibleWorkflowContract $ProjectRootPath $PythonProjectPath } `
     -SuppressOutput | Out-Null
 $summary.legacyVisibleWorkflowContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Legacy UI surface contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-LegacyUiSurfaceContract $ProjectRootPath $PythonProjectPath } `
+    -SuppressOutput | Out-Null
+$summary.legacyUiSurfaceContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Legacy profile persistence contract" `
