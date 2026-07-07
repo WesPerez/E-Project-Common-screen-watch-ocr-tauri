@@ -176,6 +176,17 @@ function countFromEitherCase(object, camelName, snakeName) {
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
 }
 
+function formatDurationMs(value) {
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return "0ms";
+  }
+  if (ms < 1000) {
+    return `${Math.trunc(ms)}ms`;
+  }
+  return `${(ms / 1000).toFixed(ms < 10000 ? 2 : 1)}s`;
+}
+
 function textFromEitherCase(object, camelName, snakeName) {
   const value = object?.[camelName] ?? object?.[snakeName] ?? "";
   return typeof value === "string" ? value.trim() : "";
@@ -679,18 +690,26 @@ export function monitoringStatusText(snapshot, options = {}) {
 
 export function monitoringProgressLogText(snapshot = {}, options = {}) {
   const tickCount = countFromEitherCase(snapshot, "tickCount", "tick_count");
+  const tickMatchCount =
+    countFromEitherCase(options, "tickMatchCount", "tick_match_count") ||
+    countFromEitherCase(snapshot, "lastTickMatchCount", "last_tick_match_count");
   const tickHitCount = countFromEitherCase(
     options,
     "tickHitCount",
     "tick_hit_count",
-  );
+  ) || countFromEitherCase(snapshot, "lastTickHitCount", "last_tick_hit_count");
+  const tickScanMs =
+    countFromEitherCase(options, "tickScanMs", "tick_scan_ms") ||
+    countFromEitherCase(snapshot, "lastTickScanMs", "last_tick_scan_ms");
   const hitCount = countFromEitherCase(snapshot, "hitCount", "hit_count");
   const regionCount = countFromEitherCase(snapshot, "regionCount", "region_count");
   const windowCount = countFromEitherCase(snapshot, "windowCount", "window_count");
   const parts = [
     `第 ${tickCount} 轮`,
     `扫描 ${regionCount} 屏 / ${windowCount} 应用`,
-    `本轮命中 ${tickHitCount}`,
+    `本轮命中 ${tickMatchCount}`,
+    `本轮报警 ${tickHitCount}`,
+    `本轮耗时 ${formatDurationMs(tickScanMs)}`,
     `累计命中 ${hitCount}`,
   ];
   const tickError = String(options.tickError || options.tick_error || "").trim();
@@ -703,11 +722,29 @@ export function monitoringProgressLogText(snapshot = {}, options = {}) {
 export function monitoringHeartbeatLogText(snapshot = {}) {
   const tickCount = countFromEitherCase(snapshot, "tickCount", "tick_count");
   const hitCount = countFromEitherCase(snapshot, "hitCount", "hit_count");
+  const lastTickMatchCount = countFromEitherCase(
+    snapshot,
+    "lastTickMatchCount",
+    "last_tick_match_count",
+  );
+  const lastTickHitCount = countFromEitherCase(
+    snapshot,
+    "lastTickHitCount",
+    "last_tick_hit_count",
+  );
+  const lastTickScanMs = countFromEitherCase(
+    snapshot,
+    "lastTickScanMs",
+    "last_tick_scan_ms",
+  );
   const regionCount = countFromEitherCase(snapshot, "regionCount", "region_count");
   const windowCount = countFromEitherCase(snapshot, "windowCount", "window_count");
   return [
     `监控心跳：已完成 ${tickCount} 轮`,
     `扫描 ${regionCount} 屏 / ${windowCount} 应用`,
+    `上一轮命中 ${lastTickMatchCount}`,
+    `上一轮报警 ${lastTickHitCount}`,
+    `上一轮耗时 ${formatDurationMs(lastTickScanMs)}`,
     `累计命中 ${hitCount}`,
   ].join("，");
 }

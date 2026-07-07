@@ -39,6 +39,9 @@ pub struct MonitorSessionSnapshot {
     pub last_tick: Option<String>,
     pub tick_count: u64,
     pub hit_count: u64,
+    pub last_tick_match_count: u64,
+    pub last_tick_hit_count: u64,
+    pub last_tick_scan_ms: u64,
     pub error_count: u64,
     pub last_error: Option<String>,
     pub region_count: usize,
@@ -61,7 +64,9 @@ pub enum MonitorSessionEventKind {
 pub struct MonitorSessionEvent {
     pub kind: MonitorSessionEventKind,
     pub snapshot: MonitorSessionSnapshot,
+    pub tick_match_count: u64,
     pub tick_hit_count: u64,
+    pub tick_scan_ms: u64,
     pub tick_error: Option<String>,
 }
 
@@ -97,6 +102,9 @@ impl Default for MonitorSessionSnapshot {
             last_tick: None,
             tick_count: 0,
             hit_count: 0,
+            last_tick_match_count: 0,
+            last_tick_hit_count: 0,
+            last_tick_scan_ms: 0,
             error_count: 0,
             last_error: None,
             region_count: 0,
@@ -156,6 +164,9 @@ impl MonitorSessionState {
             last_tick: None,
             tick_count: 0,
             hit_count: 0,
+            last_tick_match_count: 0,
+            last_tick_hit_count: 0,
+            last_tick_scan_ms: 0,
             error_count: 0,
             last_error: sources.last_error.clone(),
             region_count: sources.regions.len(),
@@ -300,6 +311,7 @@ fn monitor_loop(
     while !stop.load(Ordering::SeqCst) && active_generation.load(Ordering::SeqCst) == generation {
         let tick_started = Instant::now();
         let clock = clock_now();
+        let mut tick_matches = 0usize;
         let mut tick_hits = 0usize;
         let mut tick_target_ids = Vec::new();
         let mut tick_error: Option<String> = None;
@@ -312,6 +324,7 @@ fn monitor_loop(
             }
             match scan_one_region(engine, region, &clock) {
                 Ok(result) => {
+                    tick_matches += result.matches.len();
                     tick_target_ids.extend(alerted_target_ids(&result));
                     tick_hits += result.alerted_matches.len();
                 }
@@ -326,6 +339,7 @@ fn monitor_loop(
             }
             match scan_one_window(engine, window, &clock, &mut window_modes) {
                 Ok(Some(result)) => {
+                    tick_matches += result.matches.len();
                     tick_target_ids.extend(alerted_target_ids(&result));
                     tick_hits += result.alerted_matches.len();
                 }
@@ -353,7 +367,9 @@ fn monitor_loop(
             &stop,
             &clock,
             &sources,
+            tick_matches as u64,
             tick_hits as u64,
+            duration_ms(tick_started.elapsed()),
             tick_error,
         ) {
             event_sink.emit(event);
@@ -535,7 +551,9 @@ fn started_event(snapshot: MonitorSessionSnapshot) -> MonitorSessionEvent {
     MonitorSessionEvent {
         kind: MonitorSessionEventKind::Started,
         snapshot,
+        tick_match_count: 0,
         tick_hit_count: 0,
+        tick_scan_ms: 0,
         tick_error: None,
     }
 }
@@ -544,7 +562,9 @@ fn stopped_event(snapshot: MonitorSessionSnapshot) -> MonitorSessionEvent {
     MonitorSessionEvent {
         kind: MonitorSessionEventKind::Stopped,
         snapshot,
+        tick_match_count: 0,
         tick_hit_count: 0,
+        tick_scan_ms: 0,
         tick_error: None,
     }
 }
@@ -556,7 +576,9 @@ fn record_monitor_tick(
     stop: &AtomicBool,
     clock: &MonitorClock,
     sources: &MonitorSources,
+    tick_matches: u64,
     tick_hits: u64,
+    tick_scan_ms: u64,
     tick_error: Option<String>,
 ) -> Option<MonitorSessionEvent> {
     if active_generation.load(Ordering::SeqCst) != generation {
@@ -570,6 +592,9 @@ fn record_monitor_tick(
     status.last_tick = Some(clock.time_text.clone());
     status.tick_count = status.tick_count.saturating_add(1);
     status.hit_count = status.hit_count.saturating_add(tick_hits);
+    status.last_tick_match_count = tick_matches;
+    status.last_tick_hit_count = tick_hits;
+    status.last_tick_scan_ms = tick_scan_ms;
     status.region_count = sources.regions.len();
     status.window_count = sources.window_count();
     status.skipped_windows = sources.skipped_windows();
@@ -581,7 +606,9 @@ fn record_monitor_tick(
     Some(MonitorSessionEvent {
         kind: MonitorSessionEventKind::Tick,
         snapshot: status.clone(),
+        tick_match_count: tick_matches,
         tick_hit_count: tick_hits,
+        tick_scan_ms,
         tick_error,
     })
 }
@@ -598,6 +625,10 @@ fn sleep_interruptibly(duration: Duration, stop: &AtomicBool) {
 
 fn remaining_poll_interval(poll_interval: Duration, elapsed: Duration) -> Duration {
     poll_interval.saturating_sub(elapsed)
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    duration.as_millis().min(u128::from(u64::MAX)) as u64
 }
 
 fn poll_interval_duration(seconds: f64) -> Duration {
@@ -807,7 +838,9 @@ mod tests {
             &stop,
             &clock,
             &sources,
+            101,
             99,
+            1234,
             Some("old error".to_string()),
         );
 
@@ -908,18 +941,25 @@ mod tests {
             &stop,
             &clock,
             &sources,
+            5,
             3,
+            456,
             Some("capture failed".to_string()),
         )
         .unwrap();
 
         assert_eq!(event.kind, MonitorSessionEventKind::Tick);
+        assert_eq!(event.tick_match_count, 5);
         assert_eq!(event.tick_hit_count, 3);
+        assert_eq!(event.tick_scan_ms, 456);
         assert_eq!(event.tick_error.as_deref(), Some("capture failed"));
         assert!(event.snapshot.running);
         assert_eq!(event.snapshot.last_tick.as_deref(), Some("tick-time"));
         assert_eq!(event.snapshot.tick_count, 1);
         assert_eq!(event.snapshot.hit_count, 3);
+        assert_eq!(event.snapshot.last_tick_match_count, 5);
+        assert_eq!(event.snapshot.last_tick_hit_count, 3);
+        assert_eq!(event.snapshot.last_tick_scan_ms, 456);
         assert_eq!(event.snapshot.error_count, 1);
         assert_eq!(event.snapshot.last_error.as_deref(), Some("capture failed"));
         assert_eq!(event.snapshot.region_count, 2);
@@ -947,6 +987,8 @@ mod tests {
             &stop,
             &clock,
             &sources,
+            0,
+            0,
             0,
             None,
         )
@@ -986,6 +1028,8 @@ mod tests {
             &stop,
             &clock,
             &sources,
+            0,
+            0,
             0,
             None,
         )
@@ -1032,16 +1076,22 @@ mod tests {
             &stop,
             &clock,
             &sources,
+            6,
             4,
+            789,
             Some("capture failed".to_string()),
         )
         .unwrap();
         let value = serde_json::to_value(event).unwrap();
 
         assert_eq!(value["kind"], "tick");
+        assert_eq!(value["tickMatchCount"], 6);
         assert_eq!(value["tickHitCount"], 4);
+        assert_eq!(value["tickScanMs"], 789);
         assert_eq!(value["tickError"], "capture failed");
+        assert!(value.get("tick_match_count").is_none());
         assert!(value.get("tick_hit_count").is_none());
+        assert!(value.get("tick_scan_ms").is_none());
         assert!(value.get("tick_error").is_none());
 
         let snapshot = value["snapshot"].as_object().unwrap();
@@ -1053,6 +1103,9 @@ mod tests {
             "lastTick",
             "tickCount",
             "hitCount",
+            "lastTickMatchCount",
+            "lastTickHitCount",
+            "lastTickScanMs",
             "errorCount",
             "lastError",
             "regionCount",
@@ -1072,6 +1125,9 @@ mod tests {
             "last_tick",
             "tick_count",
             "hit_count",
+            "last_tick_match_count",
+            "last_tick_hit_count",
+            "last_tick_scan_ms",
             "error_count",
             "last_error",
             "region_count",
@@ -1090,6 +1146,9 @@ mod tests {
         assert_eq!(snapshot["lastTick"], "tick-time");
         assert_eq!(snapshot["tickCount"], 1);
         assert_eq!(snapshot["hitCount"], 4);
+        assert_eq!(snapshot["lastTickMatchCount"], 6);
+        assert_eq!(snapshot["lastTickHitCount"], 4);
+        assert_eq!(snapshot["lastTickScanMs"], 789);
         assert_eq!(snapshot["errorCount"], 1);
         assert_eq!(snapshot["lastError"], "capture failed");
         assert_eq!(snapshot["regionCount"], 1);
