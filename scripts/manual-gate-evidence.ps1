@@ -91,6 +91,10 @@ function Get-ManualGateDefinitions {
             Title = "Packaged Tray Menu And Icon Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "packaged-python-tauri-coexistence-smoke"
+            Title = "Packaged Python Tauri Coexistence Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "installer-repeatability-smoke"
             Title = "Installer Repeatability Smoke"
         },

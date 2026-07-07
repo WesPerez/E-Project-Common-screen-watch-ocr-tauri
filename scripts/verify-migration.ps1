@@ -675,10 +675,14 @@ function Assert-TauriIdentitySeparationContract {
     $startupSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\startup.rs") -Raw
     $traySource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\tray.rs") -Raw
     $packagedSmokeSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "scripts\packaged-smoke.ps1") -Raw
+    $coexistenceSmokeSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "scripts\coexistence-smoke.ps1") -Raw
     $webviewSmokeSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "scripts\webview-visual-smoke.mjs") -Raw
 
     if ($packageJson.name -ne "screen-watch-ocr-tauri") {
         throw "Tauri package.json name must stay distinct from the Python app"
+    }
+    if ($packageJson.scripts.'coexistence:smoke' -ne "powershell -ExecutionPolicy Bypass -File scripts/coexistence-smoke.ps1") {
+        throw "package.json must expose the packaged Python/Tauri coexistence smoke"
     }
     if (-not $cargoToml.Contains('name = "screen-watch-ocr-tauri"')) {
         throw "Tauri Cargo package name must stay screen-watch-ocr-tauri"
@@ -727,6 +731,22 @@ function Assert-TauriIdentitySeparationContract {
     }
     if ($startupSource.Contains('pub const STARTUP_LINK_NAME: &str = "屏幕监控OCR.lnk";')) {
         throw "Tauri startup shortcut must not use the legacy Python link name"
+    }
+
+    foreach ($required in @(
+            '$PythonPort = 47627',
+            '$TauriPort = 47628',
+            'ScreenWatchOCR:show',
+            'ScreenWatchOCRTauri:show',
+            'Python and Tauri deliverables must not have the same exe name',
+            'Python and Tauri process names must not match',
+            'Python app accepted the Tauri single-instance command',
+            'Tauri app accepted the Python single-instance command',
+            'refusing to touch an existing app'
+        )) {
+        if (-not $coexistenceSmokeSource.Contains($required)) {
+            throw "Packaged coexistence smoke is missing '$required'"
+        }
     }
 
     foreach ($required in @(
@@ -1928,7 +1948,7 @@ function Assert-SingleFileDeliverableContract {
     Assert-TextContains `
         "comparison audit manual evidence status" `
         $audit `
-        "| Manual evidence status | 16 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |"
+        "| Manual evidence status | 17 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |"
 
     return "$($exeItem.Length) bytes, $sha256, WindowsGui"
 }

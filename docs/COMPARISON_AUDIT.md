@@ -1,6 +1,6 @@
 # Python To Tauri Comparison Audit
 
-Last updated: 2026-07-07 11:52 +08:00
+Last updated: 2026-07-07 12:06 +08:00
 
 This is the current requirement-by-requirement audit for replacing
 `E:\Project\Common\screen-watch-ocr` with this Rust/Tauri implementation.
@@ -56,6 +56,7 @@ Everything else is separated so old and new processes do not collide:
 | Desktop smoke | Current `-IncludeDesktopSmoke` rerun passed 16 real Windows desktop gates with Rust core 121, Tauri 88, and OCR feature 25 still passing: screen capture, monitor listing, one-shot screen/window scan, profile screen/window scan, screen/window/remembered-window screenshot-as-template capture, persistent screen/window monitoring, app-window enumeration, preview/frame capture, and real DWM thumbnail register/update/clear |
 | Packaged smoke | Current rerun against final SHA-256 `426BE3C...` verified PE subsystem WindowsGui (2), start-minimized, legacy app_data migration, legacy geometry restore, close-to-tray, and second-instance wake with isolated appdata/ports using `release-single\ScreenWatchOCRTauri.exe` |
 | Tray menu smoke | Current rerun against final SHA-256 `426BE3C...` passed Tauri-owned native menu `Show Tauri` and `Exit Tauri`; tray menu PID matched the Tauri PID, exit code was 0, and old Python tray/processes were not touched |
+| Python/Tauri coexistence smoke | final SHA-256 `426BE3C...` and old Python SHA-256 `A5689E...` were launched together against one shared isolated `ScreenWatchOCR` data root. Process names were distinct (`ScreenWatchOCR` vs `ScreenWatchOCRTauri`), default ports `47627` and `47628` were simultaneously busy, cross-protocol commands were rejected both ways, each app acknowledged only its own command, and each second instance exited 0 |
 | WebView visual smoke | Current rerun explicitly launched final SHA-256 `426BE3C...` through `--exe-path .\release-single\ScreenWatchOCRTauri.exe` and passed source preview, template gallery, clipboard paste, one-shot scan, monitoring restart, layout resize, and legacy profile in packaged WebView2 runs. A fresh dedicated late-start remembered-window rerun also loaded a Python-shaped profile while the remembered app was absent, reported `skippedWindowApps=1`, then scanned and monitored with positive hits after the app appeared without refreshing or reselecting |
 | WebView monitoring soak | final SHA-256 `426BE3C...` was explicitly launched through `--exe-path .\release-single\ScreenWatchOCRTauri.exe` and ran profile monitoring for 300,000ms with 150 UI samples, tick delta 562, hit delta 281, progress-log delta 47, and stopped with the button restored to `开始监控` |
 | WebView2 runtime boundary | Local read-only runtime audit found Microsoft Edge WebView2 Runtime `149.0.4022.98`; Tauri official docs confirm WebView2 is preinstalled on Windows 11 and installer-handled on older Windows versions | Final single-exe smoke proves this machine and other WebView2-present Windows machines; it does not prove machines where WebView2 has been removed or was never installed |
@@ -64,7 +65,7 @@ Everything else is separated so old and new processes do not collide:
 | Template benchmark | 2560x1440, 8 templates current rerun: Rust flat 76ms 8/8, Rust textured 452ms 8/8; Python/OpenCV flat 46ms 8/8, Python/OpenCV textured 45ms with the known 4/8 odd-phase baseline miss |
 | Production template smoke | profile_1 real templates current rerun: 18/18 matched on 2560x1440 synthetic placement; 6445ms recorded with threshold 0.90, scales 1.0, and template_workers 2 |
 | Real OCR smoke | Current rerun passed with external PP-OCRv5 English models recognizing READY and external PP-OCRv5 Chinese models recognizing a generated `准备好了` PNG through `cargo test --features ocr`; `npm run ocr:text:parity` compared old Python `Detector._ocr` supplied-row semantics against Rust OCR text detection/ScanEngine tests, and `npm run ocr:corpus:smoke` recognized READY, ALERT 42, OCR TEST, 准备好了, and 开始监控 generated PNGs |
-| Manual evidence status | 16 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |
+| Manual evidence status | 17 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |
 
 ## Feature Matrix
 
@@ -99,7 +100,8 @@ Everything else is separated so old and new processes do not collide:
 | Tray Show/Exit | Proven | tray-menu smoke using Tauri-owned native menu command IDs | Visual hover tooltip/icon recording not captured, backend icon/tooltip tests cover state |
 | Tray monitoring icon/tooltip state | Proven by backend tests | tray monitoring status contract and icon pixel tests | No visual tray hover screenshot in current evidence |
 | Start minimized | Proven | packaged smoke and tray smoke | None known |
-| Single-instance wake | Proven | packaged smoke | None known |
+| Single-instance wake | Proven | packaged smoke; packaged Python/Tauri coexistence smoke proves old and new default ports/protocols are isolated | None known for process/protocol isolation |
+| New/old process identity isolation | Proven | coexistence smoke launched old `ScreenWatchOCR.exe` and final `ScreenWatchOCRTauri.exe` together with shared isolated `ScreenWatchOCR` data, distinct process names, rejected cross-protocol commands, own-protocol acknowledgements, and independent second-instance exits | Does not prove concurrent active monitoring by both apps against the same real profile |
 | Startup shortcut | Proven by isolated real-link test | startup path/status tests plus temp `.lnk` write/read/remove test | Creating/removing the user's actual Startup shortcut is intentionally not performed during smoke |
 | Lite package size | Proven | verifier lite size gate | Full OCR build remains larger but still far below Python baseline |
 | Single exe launch on arbitrary Windows PCs | Proven with boundary | final single exe smokes plus local WebView2 audit | Machines without WebView2 need the installer or WebView2 installed first; the tiny single exe intentionally does not bundle a browser engine |
