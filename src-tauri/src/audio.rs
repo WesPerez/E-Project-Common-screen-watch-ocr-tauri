@@ -93,7 +93,8 @@ fn play_wave_memory(_wav: &[u8]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{duration_from_seconds, BeepRuntimeState};
+    use super::{duration_from_seconds, AlarmBeepState, BeepRuntimeState};
+    use screen_watch_core::config::AlarmConfig;
     use std::time::{Duration, Instant};
 
     #[test]
@@ -114,5 +115,32 @@ mod tests {
         assert!(state.try_start(now, Duration::from_secs(3)));
         assert!(!state.try_start(now + Duration::from_millis(2999), Duration::from_secs(1)));
         assert!(state.try_start(now + Duration::from_secs(3), Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn start_for_alarm_respects_disabled_alarm() {
+        let beeper = AlarmBeepState::default();
+        let alarm = AlarmConfig {
+            beep: false,
+            beep_seconds: 0.01,
+            beep_volume: 100,
+            ..Default::default()
+        };
+
+        assert!(!beeper.start_for_alarm(&alarm));
+    }
+
+    #[test]
+    fn start_for_alarm_throttles_even_when_volume_is_zero() {
+        let beeper = AlarmBeepState::default();
+        let alarm = AlarmConfig {
+            beep: true,
+            beep_seconds: 0.01,
+            beep_volume: 0,
+            ..Default::default()
+        };
+
+        assert!(beeper.start_for_alarm(&alarm));
+        assert!(!beeper.start_for_alarm(&alarm));
     }
 }

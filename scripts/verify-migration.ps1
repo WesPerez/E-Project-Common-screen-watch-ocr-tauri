@@ -1639,6 +1639,67 @@ function Assert-LegacyProfilePersistenceContract {
     Assert-TextContains "frontend window-only region persistence test" $frontendTestSource "profile source options keep region inputs even without selected monitors"
 }
 
+function Assert-AudioAlarmParityContract {
+    param(
+        [string]$ProjectRootPath,
+        [string]$PythonProjectPath
+    )
+
+    $pythonSource = Get-Content -LiteralPath (Join-Path $PythonProjectPath "src\screen_watch\app.py") -Raw
+    $coreAudioSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "crates\screen-watch-core\src\audio.rs") -Raw
+    $tauriAudioSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\audio.rs") -Raw
+    $backendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\lib.rs") -Raw
+    $monitorSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\monitor_session.rs") -Raw
+
+    foreach ($expected in @(
+            "def beep_wave(volume, milliseconds=180, frequency=1200, sample_rate=22050):",
+            "volume = parse_volume(volume)",
+            "wav.setnchannels(1)",
+            "wav.setsampwidth(2)",
+            "wav.setframerate(sample_rate)",
+            "winsound.PlaySound(beep_wave(level), winsound.SND_MEMORY)",
+            "with self.beep_lock:",
+            "if now < self.beep_until:",
+            "threading.Thread(target=beep_for"
+        )) {
+        Assert-TextContains "Python audio alarm parity source" $pythonSource $expected
+    }
+
+    foreach ($expected in @(
+            "pub const DEFAULT_BEEP_MILLISECONDS: u32 = 180;",
+            "pub const DEFAULT_BEEP_FREQUENCY_HZ: u32 = 1200;",
+            "pub const DEFAULT_BEEP_SAMPLE_RATE: u32 = 22_050;",
+            "pub fn clamp_volume(value: i32) -> u8",
+            "out.extend_from_slice(b`"RIFF`");",
+            "out.extend_from_slice(b`"WAVE`");",
+            "out.extend_from_slice(b`"fmt `");",
+            "out.extend_from_slice(b`"data`");",
+            "pub struct BeepThrottle",
+            "fn beep_wave_is_pcm_wav_and_volume_changes_amplitude()",
+            "fn throttle_does_not_restart_while_beeping()"
+        )) {
+        Assert-TextContains "Rust core audio alarm parity" $coreAudioSource $expected
+    }
+
+    foreach ($expected in @(
+            "pub fn start_for_alarm(&self, alarm: &AlarmConfig) -> bool",
+            "if !alarm.beep",
+            "self.start(alarm.beep_seconds, alarm.beep_volume)",
+            "thread::spawn(move || play_beep_for(duration, volume));",
+            "if clamp_volume(volume) == 0",
+            "PlaySoundW",
+            "SND_MEMORY",
+            "PCWSTR(wav.as_ptr() as *const u16)",
+            "fn start_for_alarm_respects_disabled_alarm()",
+            "fn start_for_alarm_throttles_even_when_volume_is_zero()"
+        )) {
+        Assert-TextContains "Tauri audio alarm runtime parity" $tauriAudioSource $expected
+    }
+
+    Assert-TextContains "one-shot scan triggers alarm beep" $backendSource "beeper.start_for_alarm(&alarm);"
+    Assert-TextContains "monitoring tick triggers alarm beep" $monitorSource "beeper.start_for_alarm(engine.alarm_config());"
+}
+
 function Assert-FrontendOcrReadinessContract {
     param([string]$ProjectRootPath)
 
@@ -1896,6 +1957,7 @@ $summary = [ordered]@{
     frontendDynamicTargetContract = $null
     legacyVisibleWorkflowContract = $null
     legacyProfilePersistenceContract = $null
+    audioAlarmParityContract = $null
     frontendOcrReadinessContract = $null
     frontendSourcePreviewContract = $null
     backendCommandContract = $null
@@ -2224,6 +2286,13 @@ Invoke-CapturedStep `
     -Script { Assert-LegacyProfilePersistenceContract $ProjectRootPath $PythonProjectPath } `
     -SuppressOutput | Out-Null
 $summary.legacyProfilePersistenceContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Audio alarm parity contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-AudioAlarmParityContract $ProjectRootPath $PythonProjectPath } `
+    -SuppressOutput | Out-Null
+$summary.audioAlarmParityContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Frontend OCR readiness/probe contract" `

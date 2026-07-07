@@ -987,6 +987,16 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
 - After adding the Tauri alarm beep runtime and scan/session trigger wiring:
   `cargo test -p screen-watch-ocr-tauri`: 27 tests passing, 8 desktop-only
   capture/scan/session/window tests ignored by default.
+- After adding the audio alarm parity contract:
+  `cargo test -p screen-watch-ocr-tauri audio --lib` passed 4 audio tests,
+  `cargo test -p screen-watch-core audio --lib` passed 4 audio tests, and
+  `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1
+  -SkipPython -SkipFrontend -SkipRelease` reported `audioAlarmParityContract:
+  passed` with Rust core 121 passed / 3 ignored, Tauri 87 passed / 16
+  ignored, and OCR feature 25 passed. The contract locks Python
+  `winsound.PlaySound(..., SND_MEMORY)`/in-memory WAV/beep-throttle behavior
+  against Tauri `PlaySoundW`/`SND_MEMORY` plus one-shot and monitoring hit
+  triggers.
 - After adding the Windows startup shortcut backend and frontend controls:
   `cargo test -p screen-watch-ocr-tauri`: 33 tests passing, 8 desktop-only
   capture/scan/session/window tests ignored by default.
