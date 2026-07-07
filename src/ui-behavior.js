@@ -241,6 +241,21 @@ export function previewStatusText(okCount, totalCount, options = {}) {
   return `${prefix} - ${Math.min(ok, total)}/${total} previews${warning}`;
 }
 
+export function evidenceDirectoryPath(result = {}) {
+  return String(result?.path || result?.dir || "").trim();
+}
+
+export function evidenceDirectoryStatusText(result = {}, options = {}) {
+  const prefix = options.prefix || "Ready";
+  const path = evidenceDirectoryPath(result);
+  return path ? `${prefix} - ${path}` : `${prefix} - 证据目录已打开`;
+}
+
+export function evidenceDirectoryLogText(result = {}) {
+  const path = evidenceDirectoryPath(result);
+  return path ? `打开证据目录：${path}` : "打开证据目录";
+}
+
 export function sourcePreviewRefreshGate(state = {}, options = {}) {
   const retryDelay = Math.max(
     0,

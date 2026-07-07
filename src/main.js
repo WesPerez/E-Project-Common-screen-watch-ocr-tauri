@@ -10,6 +10,8 @@ import {
   buildSelectedWindowConfigs,
   clearRestorePreviewFrames,
   coverRestorePreviewFrames,
+  evidenceDirectoryLogText,
+  evidenceDirectoryStatusText,
   fitFixedMenuInViewport,
   installAutohideScrollbar,
   installEntryCursorEndHandlers,
@@ -2314,8 +2316,8 @@ async function openEvidenceDir() {
   status.textContent = "打开证据目录...";
   try {
     const result = await invoke("open_evidence_dir");
-    status.textContent = `Ready - ${result.path}`;
-    appendLog(`打开证据目录：${result.path}`);
+    status.textContent = evidenceDirectoryStatusText(result);
+    appendLog(evidenceDirectoryLogText(result));
   } catch (error) {
     document.querySelector("#scan-result").textContent = String(error);
     status.textContent = String(error);

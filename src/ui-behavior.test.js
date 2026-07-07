@@ -13,6 +13,8 @@ import {
   captureLayoutRatios,
   coverRestorePreviewFrames,
   currentWindowGeometry,
+  evidenceDirectoryLogText,
+  evidenceDirectoryStatusText,
   horizontalSashes,
   installAutohideScrollbar,
   installEntryCursorEndHandlers,
@@ -1061,6 +1063,26 @@ test("profile import status reports added, pruned, and target totals", () => {
     }),
     "Ready - 导入 1 张，当前 1 张",
   );
+});
+
+test("evidence directory status and log expose the opened screenshots path", () => {
+  const result = {
+    path: String.raw`C:\Users\Wes\AppData\Local\ScreenWatchOCR\screenshots`,
+  };
+
+  assert.equal(
+    evidenceDirectoryStatusText(result),
+    String.raw`Ready - C:\Users\Wes\AppData\Local\ScreenWatchOCR\screenshots`,
+  );
+  assert.equal(
+    evidenceDirectoryLogText(result),
+    String.raw`打开证据目录：C:\Users\Wes\AppData\Local\ScreenWatchOCR\screenshots`,
+  );
+});
+
+test("evidence directory status has a safe fallback when the path is absent", () => {
+  assert.equal(evidenceDirectoryStatusText({}, { prefix: "Done" }), "Done - 证据目录已打开");
+  assert.equal(evidenceDirectoryLogText({}), "打开证据目录");
 });
 
 test("profile target enabled status mirrors Python template counts", () => {

@@ -2186,6 +2186,67 @@ function Assert-LegacyTemplateFileBoundaryContract {
     }
 }
 
+function Assert-FrontendEvidenceDirectoryContract {
+    param([string]$ProjectRootPath)
+
+    $frontendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\main.js") -Raw
+    $behaviorSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.js") -Raw
+    $behaviorTests = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.test.js") -Raw
+    $htmlSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "index.html") -Raw
+    $backendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\lib.rs") -Raw
+
+    foreach ($expected in @(
+            'id="open-evidence-dir"',
+            '打开证据目录'
+        )) {
+        Assert-TextContains "frontend evidence directory HTML contract" $htmlSource $expected
+    }
+
+    foreach ($expected in @(
+            "evidenceDirectoryStatusText",
+            "evidenceDirectoryLogText",
+            'function evidenceDirectoryPath',
+            '证据目录已打开',
+            '打开证据目录：'
+        )) {
+        Assert-TextContains "frontend evidence directory behavior contract" $behaviorSource $expected
+    }
+
+    foreach ($expected in @(
+            "async function openEvidenceDir()",
+            'status.textContent = "打开证据目录..."',
+            'invoke("open_evidence_dir")',
+            "evidenceDirectoryStatusText(result)",
+            "appendLog(evidenceDirectoryLogText(result))",
+            'querySelector("#open-evidence-dir")',
+            'addEventListener("click", openEvidenceDir)'
+        )) {
+        Assert-TextContains "frontend evidence directory command path" $frontendSource $expected
+    }
+
+    foreach ($expected in @(
+            "evidence directory status and log expose the opened screenshots path",
+            "ScreenWatchOCR\screenshots",
+            "Ready - C:",
+            "打开证据目录：C:",
+            "evidence directory status has a safe fallback when the path is absent",
+            "Done - 证据目录已打开"
+        )) {
+        Assert-TextContains "frontend evidence directory unit tests" $behaviorTests $expected
+    }
+
+    foreach ($expected in @(
+            "fn open_evidence_dir",
+            "open_evidence_dir_at",
+            "screenshots_dir(data_dir)",
+            "OpenTargetFileResult",
+            "shell_open_failure",
+            "open_evidence_dir_uses_python_compatible_screenshots_dir"
+        )) {
+        Assert-TextContains "backend evidence directory command contract" $backendSource $expected
+    }
+}
+
 function Assert-LegacyProfilePersistenceContract {
     param(
         [string]$ProjectRootPath,
@@ -2604,6 +2665,7 @@ $summary = [ordered]@{
     legacyProfilePersistenceContract = $null
     audioAlarmParityContract = $null
     frontendOcrReadinessContract = $null
+    frontendEvidenceDirectoryContract = $null
     frontendSourcePreviewContract = $null
     backendCommandContract = $null
     monitorSessionEventContract = $null
@@ -2994,6 +3056,13 @@ Invoke-CapturedStep `
     -Script { Assert-FrontendOcrReadinessContract $ProjectRootPath } `
     -SuppressOutput | Out-Null
 $summary.frontendOcrReadinessContract = "passed"
+
+Invoke-CapturedStep `
+    -Name "Frontend evidence directory contract" `
+    -WorkingDirectory $ProjectRootPath `
+    -Script { Assert-FrontendEvidenceDirectoryContract $ProjectRootPath } `
+    -SuppressOutput | Out-Null
+$summary.frontendEvidenceDirectoryContract = "passed"
 
 Invoke-CapturedStep `
     -Name "Frontend source preview contract" `
