@@ -1189,17 +1189,19 @@ Detailed real-workflow gates are tracked in [FUNCTIONAL_ACCEPTANCE.md](FUNCTIONA
   missing.
 - After refreshing the final packaged WebView2/CDP full smoke:
   `node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe`
-  passed in `webview-visual-smoke-20260707-144242-result.json` with source
+  passed in `webview-visual-smoke-20260707-153009-result.json` with source
   preview, legacy Python profile restore/scan/monitoring, template-gallery
   PNG/JPG/JPEG/BMP/WebP path imports, clipboard bitmap and file-list paste,
-  one-shot scan evidence, monitoring start/stop/restart, and all layout
-  splitter drags in one final-exe run.
+  one-shot scan evidence, OCR-lite raw config rejection, monitoring
+  start/stop/restart, and all layout splitter drags in one final-exe run. The
+  late-start remembered-window gate also passed in
+  `webview-visual-smoke-20260707-153651-result.json`.
 - Current default `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1`
   passed with Python inventory `98`, Python unittest `98`, Rust core `121
   passed, 3 ignored`, Tauri shell/backend `88 passed, 16 ignored`, OCR feature
   `25 passed`, frontend `103 passed`, frontend build `True`, release build
-  `True`, `singleFileDeliverableContract: 3587072 bytes,
-  6363339BD12B57FAB97204785C314C62E52C6DECF73823187BBA723FCFD96BAB,
+  `True`, `singleFileDeliverableContract: 3587584 bytes,
+  B7356D3A96810AA70FEF42EE1FB360516411D145B1E8630F6A49F840C1EFE3A4,
   WindowsGui`, and `liteSizeGate: passed`.
 - Current optional `powershell -ExecutionPolicy Bypass -File scripts\verify-migration.ps1
   -SkipPython -SkipFrontend -SkipRelease -IncludeTemplateBenchmark

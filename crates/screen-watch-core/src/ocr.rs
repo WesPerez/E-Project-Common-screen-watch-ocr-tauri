@@ -1,5 +1,6 @@
 use crate::{
     build::BuildFlavor,
+    config::WatchConfig,
     data_dir::user_data_dir,
     detect::{OcrTextRow, RgbFrame},
 };
@@ -86,6 +87,24 @@ pub fn create_ocr_backend(settings: &OcrSettings) -> Box<dyn OcrBackend> {
             "OCR backend failed to initialize: {err}"
         )))
     })
+}
+
+pub fn ocr_unavailable_reason_for_config(
+    config: &WatchConfig,
+    settings: &OcrSettings,
+) -> Option<String> {
+    if !config.has_ocr_targets() {
+        return None;
+    }
+    let availability = settings.availability();
+    if availability.available {
+        None
+    } else {
+        Some(format!(
+            "OCR target requires an available OCR backend: {}",
+            UnavailableOcrBackend::from_availability(availability).reason()
+        ))
+    }
 }
 
 pub fn probe_ocr_backend(settings: &OcrSettings) -> OcrProbeResult {
@@ -571,10 +590,12 @@ fn probe_native_ocr_backend(_settings: &OcrSettings) -> Result<(), OcrError> {
 mod tests {
     use super::{
         create_ocr_backend, default_model_dir, native_ocr_backend_linked, ocr_module_compiled,
-        probe_ocr_backend, rapidocr_reference_model_statuses, required_model_statuses, OcrSettings,
-        RAPIDOCR_V6_REFERENCE_MODELS, REQUIRED_NATIVE_OCR_ASSETS,
+        ocr_unavailable_reason_for_config, probe_ocr_backend, rapidocr_reference_model_statuses,
+        required_model_statuses, OcrSettings, RAPIDOCR_V6_REFERENCE_MODELS,
+        REQUIRED_NATIVE_OCR_ASSETS,
     };
     use crate::build::BuildFlavor;
+    use crate::config::WatchConfig;
     use crate::detect::RgbFrame;
     use std::fs;
     use std::path::PathBuf;
@@ -696,6 +717,54 @@ mod tests {
 
         assert!(err.contains("OCR assets missing"));
         assert!(err.contains(REQUIRED_NATIVE_OCR_ASSETS[0]));
+    }
+
+    #[test]
+    fn ocr_config_unavailable_reason_skips_non_ocr_targets() {
+        let settings = OcrSettings::from_sources(
+            BuildFlavor::Lite,
+            PathBuf::from("app-data"),
+            Some(PathBuf::from("unused")),
+        );
+        let config = WatchConfig::from_json_str(
+            r#"{"targets":[{"kind":"pixel","name":"p","x":0,"y":0,"rgb":[0,0,0]}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(ocr_unavailable_reason_for_config(&config, &settings), None);
+    }
+
+    #[test]
+    fn ocr_config_unavailable_reason_reports_lite_disabled_before_scan_loop() {
+        let settings = OcrSettings::from_sources(
+            BuildFlavor::Lite,
+            PathBuf::from("app-data"),
+            Some(PathBuf::from("unused")),
+        );
+        let config = WatchConfig::from_json_str(
+            r#"{"targets":[{"kind":"ocr_text","name":"ready","text":"READY"}]}"#,
+        )
+        .unwrap();
+
+        let reason = ocr_unavailable_reason_for_config(&config, &settings).unwrap();
+
+        assert!(reason.contains("OCR target requires an available OCR backend"));
+        assert!(reason.contains("lite build: OCR module disabled"));
+    }
+
+    #[test]
+    fn ocr_config_unavailable_reason_reports_missing_model_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let settings = OcrSettings::from_sources(BuildFlavor::Full, tmp.path().to_path_buf(), None);
+        let config = WatchConfig::from_json_str(
+            r#"{"targets":[{"kind":"ocr_text","name":"ready","text":"READY"}]}"#,
+        )
+        .unwrap();
+
+        let reason = ocr_unavailable_reason_for_config(&config, &settings).unwrap();
+
+        assert!(reason.contains("OCR assets missing"));
+        assert!(reason.contains(REQUIRED_NATIVE_OCR_ASSETS[0]));
     }
 
     #[test]

@@ -68,6 +68,7 @@ const gateResults = {
   gallery: null,
   clipboard: null,
   scan: null,
+  ocrLiteBoundary: null,
   legacyProfile: null,
   legacyLateWindow: null,
   monitoring: null,
@@ -1087,6 +1088,23 @@ async function monitoringState() {
   })()`);
 }
 
+async function rawConfigState() {
+  return evalJs(`(() => ({
+    status: document.querySelector('#status')?.textContent || '',
+    resultText: document.querySelector('#scan-result')?.textContent || '',
+    scanConfig: document.querySelector('#scan-config')?.value || '',
+    profileMonitorButton: {
+      text: document.querySelector('#profile-monitor-start')?.textContent || '',
+      disabled: Boolean(document.querySelector('#profile-monitor-start')?.disabled),
+    },
+    rawMonitorStartButton: {
+      text: document.querySelector('#monitor-start')?.textContent || '',
+      disabled: Boolean(document.querySelector('#monitor-start')?.disabled),
+    },
+    logRows: [...document.querySelectorAll('#event-log tr')].map((row) => row.textContent || ''),
+  }))()`);
+}
+
 async function scanState() {
   return evalJs(`(() => {
     const resultText = document.querySelector('#scan-result')?.textContent || '';
@@ -1701,6 +1719,124 @@ async function stopMonitoringFromUi(description) {
       ? state
       : null;
   }, description, 20000, 300);
+}
+
+function ocrLiteBoundaryConfig() {
+  return {
+    poll_interval_seconds: 0.12,
+    cooldown_seconds: 0,
+    window_apps: [
+      {
+        title: helperTitle,
+        ordinal: 1,
+      },
+    ],
+    targets: [
+      {
+        kind: "ocr_text",
+        id: "ocr-lite-ready",
+        name: "ocr-lite-ready",
+        text: "READY",
+        min_score: 0.5,
+      },
+    ],
+    alarm: {
+      beep: false,
+      beep_seconds: 1,
+      beep_volume: 0,
+      save_dir: "screenshots",
+      jsonl: "alerts.jsonl",
+      max_alerts: 3,
+    },
+  };
+}
+
+async function setRawScanConfig(config) {
+  await evalJs(`(() => {
+    const input = document.querySelector('#scan-config');
+    input.value = ${JSON.stringify(JSON.stringify(config, null, 2))};
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelector('#scan-result').textContent = '';
+    return input.value;
+  })()`);
+}
+
+function assertEvidenceUnchanged(before, after, description) {
+  if (
+    before.alertLineCount !== after.alertLineCount ||
+    before.screenshotCount !== after.screenshotCount
+  ) {
+    throw new Error(`${description} wrote unexpected evidence: ${JSON.stringify({ before, after })}`);
+  }
+}
+
+function isOcrLiteBoundaryError(state) {
+  const text = `${state.status}\n${state.resultText}`;
+  return text.includes("OCR target requires an available OCR backend") &&
+    text.includes("lite build: OCR module disabled");
+}
+
+async function runOcrLiteBoundaryGate() {
+  log("running OCR lite boundary gate");
+  await waitForReadyStatus();
+  await clickSelector("#refresh-windows");
+  await waitForReadyStatus();
+  const selected = await waitFor(async () => {
+    const result = await selectOnlyHelperWindowSource();
+    return result.ok ? result : null;
+  }, "helper window source for OCR lite boundary", 20000, 500);
+
+  const config = ocrLiteBoundaryConfig();
+  const beforeEvidence = alertEvidenceState();
+  await setRawScanConfig(config);
+  await clickSelector("#scan-once");
+  const scanErrorState = await waitFor(async () => {
+    const state = await rawConfigState();
+    return isOcrLiteBoundaryError(state) ? state : null;
+  }, "one-shot OCR lite boundary error", 10000, 250);
+  const afterScanEvidence = alertEvidenceState();
+  assertEvidenceUnchanged(beforeEvidence, afterScanEvidence, "one-shot OCR lite boundary");
+  const scanScreenshot = await captureScreenshot("ocr-lite-boundary-scan-error");
+
+  await setRawScanConfig(config);
+  await clickSelector("#monitor-start");
+  const monitorErrorState = await waitFor(async () => {
+    const state = await rawConfigState();
+    return isOcrLiteBoundaryError(state) &&
+      state.profileMonitorButton.text === "开始监控" &&
+      !state.profileMonitorButton.disabled
+      ? state
+      : null;
+  }, "monitoring OCR lite boundary error and restored button", 10000, 250);
+  const afterMonitorEvidence = alertEvidenceState();
+  assertEvidenceUnchanged(afterScanEvidence, afterMonitorEvidence, "monitoring OCR lite boundary");
+
+  await clickSelector("#monitor-status");
+  const stoppedState = await waitFor(async () => {
+    const state = await monitoringState();
+    return !state.running &&
+      state.buttonText === "开始监控" &&
+      !state.buttonDisabled
+      ? state
+      : null;
+  }, "monitoring status remains stopped after OCR lite boundary", 10000, 250);
+  const monitorScreenshot = await captureScreenshot("ocr-lite-boundary-monitor-error");
+
+  const result = {
+    status: "pass",
+    selected,
+    config,
+    scanErrorState,
+    monitorErrorState,
+    stoppedState,
+    beforeEvidence,
+    afterScanEvidence,
+    afterMonitorEvidence,
+    screenshots: [scanScreenshot, monitorScreenshot],
+  };
+  gateResults.ocrLiteBoundary = result;
+  return result;
 }
 
 async function legacyProfileUiState() {
@@ -2666,6 +2802,25 @@ function writeEvidenceRecords(summary) {
       "utf8",
     );
   }
+  if (summary.gates.ocrLiteBoundary?.status === "pass") {
+    fs.writeFileSync(
+      path.join(evidenceDir, "ocr-lite-boundary-smoke.md"),
+      evidenceRecord({
+        gateTitle: "OCR Lite Boundary Smoke",
+        status: "pass",
+        observed:
+          "automated real WebView2/CDP smoke filled the hidden raw scan-config textarea with an old-style OCR text target config, clicked the packaged app's raw scan-once and raw monitor-start buttons, observed the explicit OCR backend unavailable error before any scan loop, verified alert evidence counts did not increase, queried monitoring status, and confirmed the session stayed stopped with the visible run button restored to start",
+        evidenceFiles: [
+          resultPath,
+          appLogPath,
+          ...summary.gates.ocrLiteBoundary.screenshots,
+        ],
+        remainingRisk:
+          "proves the delivered lite packaged exe rejects OCR-target configs clearly instead of entering a failing monitor loop; it does not make lite OCR equivalent to the full OCR build",
+      }),
+      "utf8",
+    );
+  }
   if (summary.gates.monitoring?.status === "pass") {
     fs.writeFileSync(
       path.join(evidenceDir, "profile-monitoring-restart-smoke.md"),
@@ -2769,6 +2924,9 @@ async function main() {
   if (gateEnabled("scan")) {
     await runOneShotScanGate();
   }
+  if (gateEnabled("ocr-lite-boundary", "ocr-lite")) {
+    await runOcrLiteBoundaryGate();
+  }
   if (gateEnabled("monitoring")) {
     await runMonitoringGate();
   }
@@ -2807,6 +2965,7 @@ async function main() {
     gallery: gateResults.gallery?.status || "skipped",
     clipboard: gateResults.clipboard?.status || "skipped",
     scan: gateResults.scan?.status || "skipped",
+    ocrLiteBoundary: gateResults.ocrLiteBoundary?.status || "skipped",
     legacyProfile: gateResults.legacyProfile?.status || "skipped",
     legacyLateWindow: gateResults.legacyLateWindow?.status || "skipped",
     monitoring: gateResults.monitoring?.status || "skipped",

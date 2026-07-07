@@ -282,6 +282,43 @@ Expected evidence:
   `ScreenWatchOCR` data directory.
 - Profile JSON showing the matching target `hit_count` increased.
 
+## OCR Lite Boundary Smoke
+
+Repeatable automated evidence can be collected against the current packaged
+lite release exe on an interactive Windows desktop:
+
+```powershell
+npm run webview:ocr-lite:smoke
+```
+
+For final single-file signoff, pass the delivered exe explicitly:
+
+```powershell
+node scripts\webview-visual-smoke.mjs --exe-path .\release-single\ScreenWatchOCRTauri.exe --gate ocr-lite-boundary
+```
+
+Manual fallback steps:
+
+- Fill the hidden raw `scan-config` field with a config containing an
+  `ocr_text` target and a stable app-window source.
+- Click the raw `扫描一次` dev-only button.
+- Confirm the visible status/result shows
+  `OCR target requires an available OCR backend` and
+  `lite build: OCR module disabled`.
+- Click the raw `开始监控` dev-only button.
+- Confirm the same OCR error appears before a monitor loop starts, the visible
+  run button is restored to `开始监控`, and querying monitor status reports not
+  running.
+
+Expected evidence:
+
+- Result JSON proving both raw one-shot scan and raw monitor-start reject the
+  OCR target config with the explicit lite OCR backend error.
+- Screenshot or video after each rejection.
+- Alert evidence counts are unchanged; no `alerts.jsonl` or screenshot is
+  written by the rejected OCR config.
+- Monitoring status remains stopped after the rejected start.
+
 ## Profile Monitoring Restart Smoke
 
 Repeatable automated evidence can be collected against the current packaged

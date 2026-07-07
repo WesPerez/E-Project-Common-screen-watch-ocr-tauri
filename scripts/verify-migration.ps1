@@ -572,6 +572,7 @@ function Assert-PackageScriptContract {
         "python:profile:compat" = "powershell -ExecutionPolicy Bypass -File scripts/python-profile-compat-smoke.ps1"
         "manual:evidence" = "powershell -ExecutionPolicy Bypass -File scripts/manual-gate-evidence.ps1"
         "webview:visual:smoke" = "node scripts/webview-visual-smoke.mjs"
+        "webview:ocr-lite:smoke" = "node scripts/webview-visual-smoke.mjs --gate ocr-lite-boundary"
         "webview:monitoring:smoke" = "node scripts/webview-visual-smoke.mjs --gate monitoring"
         "webview:monitoring:soak" = "node scripts/webview-visual-smoke.mjs --gate monitoring-soak"
         "webview:legacy-profile:smoke" = "node scripts/webview-visual-smoke.mjs --gate legacy-profile"
@@ -951,6 +952,7 @@ function Assert-ManualGateRunbookContract {
             "## Template Gallery Visual Workflow Smoke",
             "## Profile Clipboard Paste Smoke",
             "## Profile One Shot Scan Smoke",
+            "## OCR Lite Boundary Smoke",
             "## Legacy Profile End-to-End Smoke",
             "## Legacy Late-Start Window End-to-End Smoke",
             "## Python Read Tauri Profile Compat Smoke",
@@ -976,6 +978,7 @@ function Assert-ManualGateRunbookContract {
             'npm run webview:visual:smoke -- --gate gallery',
             'npm run webview:clipboard:smoke',
             'npm run webview:scan:smoke',
+            'npm run webview:ocr-lite:smoke',
             'npm run webview:legacy-profile:smoke',
             'npm run webview:legacy-late-window:smoke',
             'npm run python:profile:compat',
@@ -1005,6 +1008,8 @@ function Assert-ManualGateRunbookContract {
             'DWM-backed window previews',
             'CF_DIB bitmap paste and CF_HDROP image-file paste',
             'alerts.jsonl plus screenshot evidence',
+            'lite build: OCR module disabled',
+            'OCR target requires an available OCR backend',
             'Python-shaped profile_1.json',
             'late-start remembered app window',
             'Tauri-shaped `profile_1.json`',
@@ -2005,7 +2010,7 @@ function Assert-SingleFileDeliverableContract {
     Assert-TextContains `
         "comparison audit manual evidence status" `
         $audit `
-        "| Manual evidence status | 18 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |"
+        "| Manual evidence status | 19 pass, 0 blocked, 0 fail, 0 missing, 0 incomplete, 0 invalid |"
 
     return "$($exeItem.Length) bytes, $sha256, WindowsGui"
 }

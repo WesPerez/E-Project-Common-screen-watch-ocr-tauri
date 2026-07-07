@@ -7,7 +7,7 @@ use crate::{
 use screen_watch_core::{
     config::{WatchConfig, WindowAppConfig, WindowConfig},
     evidence::safe_name,
-    ocr::{create_ocr_backend, OcrSettings},
+    ocr::{create_ocr_backend, ocr_unavailable_reason_for_config, OcrSettings},
     scan::{ScanEngine, ScanFrameResult},
     sources::ResolvedRegion,
 };
@@ -123,11 +123,14 @@ impl MonitorSessionState {
         if regions.is_empty() && windows.is_empty() && window_apps.is_empty() {
             return Err("monitoring session has no screen or window sources".to_string());
         }
+        let settings = OcrSettings::from_env();
+        if let Some(reason) = ocr_unavailable_reason_for_config(&config, &settings) {
+            return Err(reason);
+        }
         self.reap_finished_worker()?;
         self.request_stop_current_worker(START_STOP_JOIN_GRACE, false)?;
 
         let poll_interval = poll_interval_duration(config.poll_interval_seconds);
-        let settings = OcrSettings::from_env();
         let mut engine = ScanEngine::new_with_ocr_backend(
             config,
             &base_dir,
@@ -814,6 +817,43 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("no screen or window sources"));
         assert!(!session.snapshot().unwrap().running);
+    }
+
+    #[cfg(not(feature = "ocr"))]
+    #[test]
+    fn start_rejects_ocr_targets_before_starting_lite_worker() {
+        let session = MonitorSessionState::default();
+        let config = screen_watch_core::config::WatchConfig::from_json_str(
+            r#"{"targets":[{"kind":"ocr_text","name":"ready","text":"READY"}]}"#,
+        )
+        .unwrap();
+
+        let err = session
+            .start_sources_with_events(
+                config,
+                std::env::temp_dir(),
+                vec![ResolvedRegion {
+                    name: "screen".to_string(),
+                    monitor: 1,
+                    bbox: BBox {
+                        left: 0,
+                        top: 0,
+                        width: 16,
+                        height: 16,
+                    },
+                }],
+                Vec::new(),
+                Vec::new(),
+                AlarmBeepState::default(),
+                None,
+                Arc::new(TestEventSink),
+            )
+            .unwrap_err();
+
+        assert!(err.contains("OCR target requires an available OCR backend"));
+        assert!(err.contains("lite build: OCR module disabled"));
+        assert!(!session.snapshot().unwrap().running);
+        assert!(session.worker.lock().unwrap().is_none());
     }
 
     #[test]

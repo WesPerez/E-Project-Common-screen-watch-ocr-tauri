@@ -63,6 +63,10 @@ function Get-ManualGateDefinitions {
             Title = "Profile One Shot Scan Smoke"
         },
         [pscustomobject][ordered]@{
+            Id = "ocr-lite-boundary-smoke"
+            Title = "OCR Lite Boundary Smoke"
+        },
+        [pscustomobject][ordered]@{
             Id = "legacy-profile-e2e-smoke"
             Title = "Legacy Profile End-to-End Smoke"
         },

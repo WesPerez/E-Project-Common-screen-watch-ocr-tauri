@@ -117,7 +117,18 @@ public static class ScreenWatchCoexistenceSmokeNative
 
 function Get-ExeSha256 {
     param([string]$Path)
-    return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToUpperInvariant()
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = $sha.ComputeHash($stream)
+            return ([BitConverter]::ToString($bytes) -replace "-", "").ToUpperInvariant()
+        } finally {
+            $sha.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
 }
 
 function Get-PeSubsystem {

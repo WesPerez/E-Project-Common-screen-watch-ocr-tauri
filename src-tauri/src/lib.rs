@@ -28,7 +28,10 @@ use screen_watch_core::{
     config::WatchConfig,
     data_dir::{legacy_data_dir_from_app_root, migrate_legacy_data_at, user_data_dir},
     evidence::safe_name,
-    ocr::{create_ocr_backend, probe_ocr_backend, OcrAvailability, OcrProbeResult, OcrSettings},
+    ocr::{
+        create_ocr_backend, ocr_unavailable_reason_for_config, probe_ocr_backend, OcrAvailability,
+        OcrProbeResult, OcrSettings,
+    },
     profile::{
         add_profile_template_frames_at, add_profile_template_pngs_at,
         clear_profile_target_hit_count_at, clear_profile_targets_at, normalize_profile_file_at,
@@ -229,6 +232,9 @@ fn scan_engine_for(
     data_dir: &Path,
 ) -> Result<ScanEngine, String> {
     let settings = OcrSettings::from_env();
+    if let Some(reason) = ocr_unavailable_reason_for_config(&config, &settings) {
+        return Err(reason);
+    }
     ScanEngine::new_with_ocr_backend(
         config,
         template_base_dir,

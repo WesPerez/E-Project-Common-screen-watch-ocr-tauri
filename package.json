@@ -22,6 +22,7 @@
     "webview:visual:smoke": "node scripts/webview-visual-smoke.mjs",
     "webview:clipboard:smoke": "node scripts/webview-visual-smoke.mjs --gate clipboard",
     "webview:scan:smoke": "node scripts/webview-visual-smoke.mjs --gate scan",
+    "webview:ocr-lite:smoke": "node scripts/webview-visual-smoke.mjs --gate ocr-lite-boundary",
     "webview:legacy-profile:smoke": "node scripts/webview-visual-smoke.mjs --gate legacy-profile",
     "webview:legacy-late-window:smoke": "node scripts/webview-visual-smoke.mjs --gate legacy-late-window",
     "webview:monitoring:smoke": "node scripts/webview-visual-smoke.mjs --gate monitoring",

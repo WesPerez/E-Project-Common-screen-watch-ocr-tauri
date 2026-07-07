@@ -1,6 +1,6 @@
 param(
     [string]$ExePath = "",
-    [int]$StartupWaitSeconds = 8
+    [int]$StartupWaitSeconds = 18
 )
 
 $ErrorActionPreference = "Stop"
