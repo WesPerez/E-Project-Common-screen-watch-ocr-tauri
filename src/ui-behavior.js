@@ -578,6 +578,16 @@ export function profileTargetsEnabledStatusText(result = {}, options = {}) {
   return `${prefix} - 当前 ${totalCount} 张模板，启用 ${enabledCount} 张`;
 }
 
+export function profileToggleAllLabel(profile = {}) {
+  const targets = Array.isArray(profile?.targets) ? profile.targets : [];
+  const allEnabled =
+    targets.length > 0 &&
+    (profile?.allEnabled === true ||
+      profile?.all_enabled === true ||
+      targets.every(targetEnabled));
+  return allEnabled ? "反选" : "全选";
+}
+
 function normalizedRegion(region = {}) {
   const normalized = {
     left: Math.round(finiteNumber(region.left, 0)),

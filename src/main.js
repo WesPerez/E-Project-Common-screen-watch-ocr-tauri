@@ -25,6 +25,7 @@ import {
   profileImportRequest,
   profileImportStatusText,
   profileTargetsEnabledStatusText,
+  profileToggleAllLabel,
   profileWorkflowActionState,
   recordRepeatClick,
   resizeMultiPaneLayout,
@@ -1697,9 +1698,11 @@ function renderProfile(profile, options = {}) {
   const summary = document.querySelector("#profile-summary");
   const result = document.querySelector("#profile-result");
   const targetList = document.querySelector("#profile-targets");
+  const toggleAllButton = document.querySelector("#profile-toggle-all");
   const state = profile.exists ? "已存在" : "未创建";
   const allEnabled = profile.allEnabled ? "全部启用" : "部分/全部停用";
   summary.textContent = `${state}，${profile.targets.length} 张模板，启用 ${profile.enabledCount} 张，${allEnabled}`;
+  toggleAllButton.textContent = profileToggleAllLabel(profile);
   targetList.replaceChildren(...profile.targets.map(renderProfileTarget));
   selectedTargetIndex = targetSelectionIndexForProfileLoad(
     profile,

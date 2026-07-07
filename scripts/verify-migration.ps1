@@ -4,7 +4,7 @@ param(
     [int]$MinimumRustCoreTests = 120,
     [int]$MinimumTauriTests = 82,
     [int]$MinimumOcrFeatureTests = 23,
-    [int]$MinimumFrontendTests = 102,
+    [int]$MinimumFrontendTests = 103,
     [long]$MaxTauriLiteExeBytes = 15728640,
     [double]$MaxTauriToPythonExeRatio = 0.25,
     [switch]$SkipPython,
@@ -1518,6 +1518,8 @@ function Assert-LegacyVisibleWorkflowContract {
     $pythonSource = Get-Content -LiteralPath (Join-Path $PythonProjectPath "src\screen_watch\app.py") -Raw
     $htmlSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "index.html") -Raw
     $frontendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\main.js") -Raw
+    $frontendBehaviorSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.js") -Raw
+    $frontendTestSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src\ui-behavior.test.js") -Raw
     $backendSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "src-tauri\src\lib.rs") -Raw
     $profileSource = Get-Content -LiteralPath (Join-Path $ProjectRootPath "crates\screen-watch-core\src\profile.rs") -Raw
     $backendCommands = Get-RegisteredTauriCommands $backendSource
@@ -1644,6 +1646,13 @@ function Assert-LegacyVisibleWorkflowContract {
     Assert-TextContains "legacy visible workflow max_alerts backend state save" $backendSource "save_max_alerts_at(data_dir, max_alerts)"
     Assert-TextContains "legacy visible workflow max_alerts state helper" $profileSource "pub fn save_max_alerts_at"
     Assert-TextContains "legacy visible workflow max_alerts profile cleanup" $profileSource 'out.remove("max_alerts")'
+    Assert-TextContains "legacy target select button starts as all-select" $pythonSource 'self.target_select_btn = ttk.Button(gallery_label, text="全选"'
+    Assert-TextContains "legacy target select button switches to invert when all enabled" $pythonSource 'self.target_select_btn.configure(text="反选" if all_selected else "全选")'
+    Assert-TextContains "frontend target select button starts as all-select" $htmlSource '<button id="profile-toggle-all" type="button">全选</button>'
+    Assert-TextContains "frontend target select button uses parity helper" $frontendSource "profileToggleAllLabel(profile)"
+    Assert-TextContains "frontend target select button parity helper" $frontendBehaviorSource "export function profileToggleAllLabel"
+    Assert-TextContains "frontend target select button parity test" $frontendTestSource 'profileToggleAllLabel({ targets: [] }), "全选"'
+    Assert-TextContains "frontend target select button parity test" $frontendTestSource 'profileToggleAllLabel({ targets: [{ enabled: true }, {}] })'
 }
 
 function Assert-LegacyProfilePersistenceContract {

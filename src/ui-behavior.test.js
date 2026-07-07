@@ -31,6 +31,7 @@ import {
   profileImportRequest,
   profileImportStatusText,
   profileTargetsEnabledStatusText,
+  profileToggleAllLabel,
   profileWorkflowActionState,
   profileSourceOptionsHaveSources,
   recordRepeatClick,
@@ -1089,6 +1090,22 @@ test("profile target enabled status falls back to target enabled flags", () => {
       { prefix: "Done" },
     ),
     "Done - 当前 3 张模板，启用 2 张",
+  );
+});
+
+test("profile toggle all label follows the Python all-select button", () => {
+  assert.equal(profileToggleAllLabel({ targets: [] }), "全选");
+  assert.equal(
+    profileToggleAllLabel({ targets: [{ enabled: true }, { enabled: false }] }),
+    "全选",
+  );
+  assert.equal(
+    profileToggleAllLabel({ targets: [{ enabled: true }, {}] }),
+    "反选",
+  );
+  assert.equal(
+    profileToggleAllLabel({ allEnabled: true, targets: [{ enabled: false }] }),
+    "反选",
   );
 });
 
