@@ -118,6 +118,9 @@ pub fn choose_window_frame(
         .map(|frame| !mostly_black(frame) && black_fraction(frame, 8) < 0.25)
         .unwrap_or(false)
     {
+        if let Some(cache) = mode_cache {
+            cache.clear_visible_mode(hwnd);
+        }
         return prepared_print;
     }
 
@@ -173,25 +176,12 @@ pub fn capture_window_frame(
 
 fn capture_window_frame_with_sources(
     hwnd: isize,
-    mut mode_cache: Option<&mut WindowCaptureModeCache>,
+    mode_cache: Option<&mut WindowCaptureModeCache>,
     mut capture_visible: impl FnMut(isize) -> Result<Option<RgbFrame>, CaptureError>,
     mut capture_print: impl FnMut(isize) -> Result<Option<RgbFrame>, CaptureError>,
 ) -> Result<Option<RgbFrame>, CaptureError> {
-    let visible_frame = capture_visible(hwnd)?;
-    if visible_frame
-        .as_ref()
-        .map(|frame| !mostly_black(frame))
-        .unwrap_or(false)
-    {
-        if let Some(cache) = mode_cache.as_deref_mut() {
-            cache.set_visible_mode(hwnd);
-        }
-        return Ok(visible_frame);
-    }
-    if let Some(cache) = mode_cache.as_deref_mut() {
-        cache.clear_visible_mode(hwnd);
-    }
     let print_frame = capture_print(hwnd)?;
+    let visible_frame = capture_visible(hwnd)?;
     Ok(choose_window_frame(
         hwnd,
         print_frame,
@@ -565,19 +555,19 @@ mod tests {
     }
 
     #[test]
-    fn capture_window_frame_prefers_visible_frame_before_printwindow() {
+    fn capture_window_frame_prefers_printwindow_before_visible_desktop_pixels() {
         let mut cache = WindowCaptureModeCache::default();
         let frame = capture_window_frame_with_sources(
             123,
             Some(&mut cache),
             |_| Ok(Some(solid(2, 2, [10, 20, 30]))),
-            |_| panic!("PrintWindow should not be called when visible capture is usable"),
+            |_| Ok(Some(solid(2, 2, [40, 50, 60]))),
         )
         .unwrap()
         .unwrap();
 
-        assert_eq!(frame, solid(2, 2, [10, 20, 30]));
-        assert!(cache.is_visible_mode(123));
+        assert_eq!(frame, solid(2, 2, [40, 50, 60]));
+        assert!(!cache.is_visible_mode(123));
     }
 
     #[test]
