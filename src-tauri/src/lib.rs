@@ -49,6 +49,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use startup::{unsupported_status, StartupManager, StartupStatus};
 use std::{
+    collections::HashSet,
     path::Path,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -444,6 +445,8 @@ fn concrete_windows_from_sources(
         skipped_window_apps = resolution.missing_window_apps.len();
         windows.extend(resolution.windows);
     }
+    let mut seen = HashSet::new();
+    windows.retain(|window| window.hwnd.map(|hwnd| seen.insert(hwnd)).unwrap_or(false));
     Ok((windows, skipped_windows, skipped_window_apps))
 }
 

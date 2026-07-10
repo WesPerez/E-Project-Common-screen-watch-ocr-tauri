@@ -4,7 +4,7 @@ param(
     [string]$Frame = "2560x1440",
     [string]$Scales = "1.0",
     [double]$Threshold = 0.90,
-    [int]$TemplateWorkers = 2,
+    [int]$TemplateWorkers = 4,
     [string]$PythonProject = "",
     [string]$ResultPath = "",
     [switch]$RustDebug

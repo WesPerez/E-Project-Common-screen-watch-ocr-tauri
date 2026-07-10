@@ -225,7 +225,7 @@ full-build setup problems are visible without reading logs. A manual OCR backend
 probe can also attempt native initialization after the required external model
 files are present, without starting monitoring.
 
-The app exe is produced at:
+The release app exe is produced at:
 
 ```text
 target\release\screen-watch-ocr-tauri.exe
@@ -236,14 +236,9 @@ verifier uses `tauri build --no-bundle` so the executable is produced through
 the real Tauri frontend-asset pipeline without requiring installer downloads,
 then checks the Cargo OCR feature/dependency boundaries and lite exe size
 guardrail.
-Portable zip packages can be created with `npm run package:portable:lite` or
-`npm run package:portable:full`; the packaging script validates the archive
-root, exe size, exe SHA-256, build-info sidecar, manifest fields, README
-presence, required OCR model list, and absence of bundled `.onnx` files or
-required OCR asset filenames. When `-SkipBuild` is used, the script requires
-the release exe's `screen-watch-ocr-tauri.build-info.json` sidecar to match the
-requested lite/full flavor and the current executable hash before it will write
-a portable manifest.
+Portable zip packages can still be created with `npm run package:portable:lite`
+or `npm run package:portable:full` when a verification gate specifically needs
+an archive. For everyday local use, run the exe directly from `target\release`.
 
 ## OCR Models
 

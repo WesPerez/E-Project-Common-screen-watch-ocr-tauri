@@ -158,6 +158,8 @@ pub fn save_rgb_png(path: impl AsRef<Path>, frame: &RgbFrame, matches: &[Match])
     let mut encoder = png::Encoder::new(writer, frame.width, frame.height);
     encoder.set_color(png::ColorType::Rgb);
     encoder.set_depth(png::BitDepth::Eight);
+    encoder.set_compression(png::Compression::Fast);
+    encoder.set_filter(png::FilterType::Paeth);
     let mut writer = encoder.write_header()?;
     writer.write_image_data(&pixels)?;
     Ok(())
@@ -401,7 +403,7 @@ mod tests {
     };
     use crate::config::AlarmConfig;
     use crate::detect::{Match, RgbFrame};
-    use std::fs;
+    use std::{fs, time::Instant};
 
     #[test]
     fn alarm_paths_match_app_data_conventions() {
@@ -528,6 +530,36 @@ mod tests {
         let parsed: AlertEvent = serde_json::from_str(lines.trim()).unwrap();
         assert_eq!(parsed.matches[0].target_id, "stable-id");
         assert_eq!(parsed.screenshot, event.screenshot);
+    }
+
+    #[test]
+    #[ignore = "performance gate; run explicitly in release mode"]
+    fn benchmark_4k_alert_png_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let width = 3840;
+        let height = 2160;
+        let mut pixels = Vec::with_capacity(width * height * 3);
+        for y in 0..height {
+            for x in 0..width {
+                pixels.push(((x * 17 + y * 11) % 256) as u8);
+                pixels.push(((x * 7 + y * 19) % 256) as u8);
+                pixels.push(((x * 23 + y * 5) % 256) as u8);
+            }
+        }
+        let frame = RgbFrame::new(width as u32, height as u32, pixels).unwrap();
+        let path = tmp.path().join("4k-alert.png");
+
+        let started = Instant::now();
+        save_rgb_png(&path, &frame, &[sample_match([100, 100, 600, 300])]).unwrap();
+        let elapsed_ms = started.elapsed().as_millis();
+        let bytes = path.metadata().unwrap().len();
+
+        println!("alertPngBenchmarkMs={elapsed_ms} bytes={bytes}");
+        let decoded = RgbFrame::from_png_path(&path).unwrap();
+        assert_eq!(
+            (decoded.width, decoded.height),
+            (width as u32, height as u32)
+        );
     }
 
     fn sample_match(box_xyxy: [u32; 4]) -> Match {

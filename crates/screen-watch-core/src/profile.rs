@@ -17,7 +17,7 @@ use std::{
 
 pub const PROFILE_COUNT: u32 = 5;
 pub const PROFILE_SOURCE_WORKERS: usize = 1;
-pub const PROFILE_TEMPLATE_WORKERS: usize = 2;
+pub const PROFILE_TEMPLATE_WORKERS: usize = 4;
 pub const PROFILE_MIN_IDLE_SECONDS: f64 = 0.08;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

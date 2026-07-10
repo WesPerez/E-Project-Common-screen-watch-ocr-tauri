@@ -2,7 +2,9 @@ use crate::screen_capture::{
     bgra_top_down_to_rgb, capture_screen_region, CaptureError, CaptureRegion,
 };
 use screen_watch_core::detect::RgbFrame;
-use std::collections::HashSet;
+use std::collections::HashMap;
+
+const VISIBLE_MODE_REPROBE_INTERVAL: u16 = 30;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WindowRect {
@@ -14,89 +16,56 @@ pub struct WindowRect {
 
 #[derive(Debug, Default)]
 pub struct WindowCaptureModeCache {
-    visible_hwnds: HashSet<isize>,
+    visible_hwnds: HashMap<isize, u16>,
 }
 
 impl WindowCaptureModeCache {
     #[cfg(test)]
     pub fn is_visible_mode(&self, hwnd: isize) -> bool {
-        self.visible_hwnds.contains(&hwnd)
+        self.visible_hwnds.contains_key(&hwnd)
     }
 
     pub fn set_visible_mode(&mut self, hwnd: isize) {
-        self.visible_hwnds.insert(hwnd);
+        self.visible_hwnds.insert(hwnd, 0);
     }
 
     pub fn clear_visible_mode(&mut self, hwnd: isize) {
         self.visible_hwnds.remove(&hwnd);
     }
+
+    fn should_capture_visible_first(&mut self, hwnd: isize) -> bool {
+        let Some(ticks) = self.visible_hwnds.get_mut(&hwnd) else {
+            return false;
+        };
+        *ticks += 1;
+        if *ticks >= VISIBLE_MODE_REPROBE_INTERVAL {
+            *ticks = 0;
+            false
+        } else {
+            true
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FrameQuality {
+    mostly_black: bool,
+    black_fraction: f64,
+    content_bounds: Option<(u32, u32, u32, u32)>,
 }
 
 pub fn mostly_black(frame: &RgbFrame) -> bool {
-    if frame.pixels.is_empty() {
-        return true;
-    }
-    let sum = frame
-        .pixels
-        .iter()
-        .map(|value| u64::from(*value))
-        .sum::<u64>();
-    (sum as f64 / frame.pixels.len() as f64) < 8.0
+    analyze_frame(frame, 8).mostly_black
 }
 
+#[cfg(test)]
 pub fn black_fraction(frame: &RgbFrame, threshold: u8) -> f64 {
-    let pixels = frame.pixels.chunks_exact(3);
-    let total = pixels.len();
-    if total == 0 {
-        return 1.0;
-    }
-    let black = frame
-        .pixels
-        .chunks_exact(3)
-        .filter(|pixel| pixel.iter().copied().max().unwrap_or(0) < threshold)
-        .count();
-    black as f64 / total as f64
+    analyze_frame(frame, threshold).black_fraction
 }
 
+#[cfg(test)]
 pub fn crop_black_padding(frame: &RgbFrame, threshold: u8) -> RgbFrame {
-    if black_fraction(frame, threshold) < 0.25 {
-        return frame.clone();
-    }
-
-    let mut left = frame.width;
-    let mut top = frame.height;
-    let mut right = 0u32;
-    let mut bottom = 0u32;
-    for y in 0..frame.height {
-        for x in 0..frame.width {
-            if frame
-                .pixel(x, y)
-                .map(|pixel| pixel.iter().copied().max().unwrap_or(0) >= threshold)
-                .unwrap_or(false)
-            {
-                left = left.min(x);
-                top = top.min(y);
-                right = right.max(x + 1);
-                bottom = bottom.max(y + 1);
-            }
-        }
-    }
-    if right <= left || bottom <= top {
-        return frame.clone();
-    }
-
-    let width = frame.width;
-    let height = frame.height;
-    let should_crop = left as f64 <= width as f64 * 0.05
-        && top as f64 <= height as f64 * 0.05
-        && right as f64 >= width as f64 * 0.35
-        && bottom as f64 >= height as f64 * 0.35
-        && ((right as f64) < width as f64 * 0.9 || (bottom as f64) < height as f64 * 0.9);
-    if !should_crop {
-        return frame.clone();
-    }
-
-    crop_frame(frame, left, top, right - left, bottom - top)
+    crop_black_padding_owned(frame.clone(), threshold)
 }
 
 pub fn choose_window_frame(
@@ -105,36 +74,41 @@ pub fn choose_window_frame(
     visible_frame: Option<RgbFrame>,
     mode_cache: Option<&mut WindowCaptureModeCache>,
 ) -> Option<RgbFrame> {
-    let print_was_black = print_frame.as_ref().map(mostly_black).unwrap_or(true);
-    let prepared_print = print_frame.map(|frame| {
-        if mostly_black(&frame) {
-            frame
-        } else {
-            crop_black_padding(&frame, 8)
-        }
-    });
-    if prepared_print
-        .as_ref()
-        .map(|frame| !mostly_black(frame) && black_fraction(frame, 8) < 0.25)
-        .unwrap_or(false)
-    {
+    let (prepared_print, print_quality, print_was_black) = prepare_print_frame(print_frame);
+    choose_prepared_window_frame(
+        hwnd,
+        prepared_print,
+        print_quality,
+        print_was_black,
+        visible_frame,
+        mode_cache,
+    )
+}
+
+fn choose_prepared_window_frame(
+    hwnd: isize,
+    prepared_print: Option<RgbFrame>,
+    print_quality: Option<FrameQuality>,
+    print_was_black: bool,
+    visible_frame: Option<RgbFrame>,
+    mode_cache: Option<&mut WindowCaptureModeCache>,
+) -> Option<RgbFrame> {
+    if print_quality.map(frame_quality_is_good).unwrap_or(false) {
         if let Some(cache) = mode_cache {
             cache.clear_visible_mode(hwnd);
         }
         return prepared_print;
     }
 
-    let visible_is_good = visible_frame
-        .as_ref()
-        .map(|frame| !mostly_black(frame))
+    let visible_quality = visible_frame.as_ref().map(|frame| analyze_frame(frame, 8));
+    let visible_is_good = visible_quality
+        .map(|quality| !quality.mostly_black)
         .unwrap_or(false);
     if visible_is_good {
-        let should_use_visible = prepared_print
-            .as_ref()
-            .map(|frame| {
-                mostly_black(frame)
-                    || black_fraction(visible_frame.as_ref().unwrap(), 8) + 0.1
-                        < black_fraction(frame, 8)
+        let should_use_visible = print_quality
+            .map(|quality| {
+                quality.mostly_black
+                    || visible_quality.unwrap().black_fraction + 0.1 < quality.black_fraction
             })
             .unwrap_or(true);
         if should_use_visible {
@@ -180,11 +154,43 @@ fn capture_window_frame_with_sources(
     mut capture_visible: impl FnMut(isize) -> Result<Option<RgbFrame>, CaptureError>,
     mut capture_print: impl FnMut(isize) -> Result<Option<RgbFrame>, CaptureError>,
 ) -> Result<Option<RgbFrame>, CaptureError> {
+    let mut mode_cache = mode_cache;
+    if mode_cache
+        .as_deref_mut()
+        .map(|cache| cache.should_capture_visible_first(hwnd))
+        .unwrap_or(false)
+    {
+        let visible_frame = capture_visible(hwnd)?;
+        if visible_frame
+            .as_ref()
+            .map(|frame| !analyze_frame(frame, 8).mostly_black)
+            .unwrap_or(false)
+        {
+            return Ok(visible_frame);
+        }
+        let print_frame = capture_print(hwnd)?;
+        return Ok(choose_window_frame(
+            hwnd,
+            print_frame,
+            visible_frame,
+            mode_cache,
+        ));
+    }
+
     let print_frame = capture_print(hwnd)?;
+    let (prepared_print, print_quality, print_was_black) = prepare_print_frame(print_frame);
+    if print_quality.map(frame_quality_is_good).unwrap_or(false) {
+        if let Some(cache) = mode_cache {
+            cache.clear_visible_mode(hwnd);
+        }
+        return Ok(prepared_print);
+    }
     let visible_frame = capture_visible(hwnd)?;
-    Ok(choose_window_frame(
+    Ok(choose_prepared_window_frame(
         hwnd,
-        print_frame,
+        prepared_print,
+        print_quality,
+        print_was_black,
         visible_frame,
         mode_cache,
     ))
@@ -223,6 +229,87 @@ fn crop_frame(frame: &RgbFrame, left: u32, top: u32, width: u32, height: u32) ->
         pixels.extend_from_slice(&frame.pixels[start..end]);
     }
     RgbFrame::new(width, height, pixels).expect("cropped frame dimensions are valid")
+}
+
+fn analyze_frame(frame: &RgbFrame, threshold: u8) -> FrameQuality {
+    let total = frame.pixels.len() / 3;
+    if total == 0 {
+        return FrameQuality {
+            mostly_black: true,
+            black_fraction: 1.0,
+            content_bounds: None,
+        };
+    }
+    let mut channel_sum = 0u64;
+    let mut black = 0usize;
+    let mut left = frame.width;
+    let mut top = frame.height;
+    let mut right = 0u32;
+    let mut bottom = 0u32;
+    for (index, pixel) in frame.pixels.chunks_exact(3).enumerate() {
+        channel_sum += pixel.iter().map(|value| u64::from(*value)).sum::<u64>();
+        let max = pixel.iter().copied().max().unwrap_or(0);
+        if max < threshold {
+            black += 1;
+            continue;
+        }
+        let x = index as u32 % frame.width;
+        let y = index as u32 / frame.width;
+        left = left.min(x);
+        top = top.min(y);
+        right = right.max(x + 1);
+        bottom = bottom.max(y + 1);
+    }
+    FrameQuality {
+        mostly_black: channel_sum as f64 / (frame.pixels.len() as f64) < 8.0,
+        black_fraction: black as f64 / (total as f64),
+        content_bounds: (right > left && bottom > top).then_some((left, top, right, bottom)),
+    }
+}
+
+fn frame_quality_is_good(quality: FrameQuality) -> bool {
+    !quality.mostly_black && quality.black_fraction < 0.25
+}
+
+fn prepare_print_frame(frame: Option<RgbFrame>) -> (Option<RgbFrame>, Option<FrameQuality>, bool) {
+    let Some(frame) = frame else {
+        return (None, None, true);
+    };
+    let initial_quality = analyze_frame(&frame, 8);
+    let print_was_black = initial_quality.mostly_black;
+    let frame = if print_was_black {
+        frame
+    } else {
+        crop_black_padding_owned_with_quality(frame, initial_quality)
+    };
+    let quality = analyze_frame(&frame, 8);
+    (Some(frame), Some(quality), print_was_black)
+}
+
+#[cfg(test)]
+fn crop_black_padding_owned(frame: RgbFrame, threshold: u8) -> RgbFrame {
+    let quality = analyze_frame(&frame, threshold);
+    crop_black_padding_owned_with_quality(frame, quality)
+}
+
+fn crop_black_padding_owned_with_quality(frame: RgbFrame, quality: FrameQuality) -> RgbFrame {
+    if quality.black_fraction < 0.25 {
+        return frame;
+    }
+    let Some((left, top, right, bottom)) = quality.content_bounds else {
+        return frame;
+    };
+    let width = frame.width;
+    let height = frame.height;
+    let should_crop = left as f64 <= width as f64 * 0.05
+        && top as f64 <= height as f64 * 0.05
+        && right as f64 >= width as f64 * 0.35
+        && bottom as f64 >= height as f64 * 0.35
+        && ((right as f64) < width as f64 * 0.9 || (bottom as f64) < height as f64 * 0.9);
+    if !should_crop {
+        return frame;
+    }
+    crop_frame(&frame, left, top, right - left, bottom - top)
 }
 
 #[cfg(windows)]
@@ -496,6 +583,7 @@ mod tests {
         WindowCaptureModeCache,
     };
     use screen_watch_core::detect::RgbFrame;
+    use std::cell::Cell;
 
     #[test]
     fn mostly_black_detects_blank_preview_like_python_baseline() {
@@ -557,17 +645,45 @@ mod tests {
     #[test]
     fn capture_window_frame_prefers_printwindow_before_visible_desktop_pixels() {
         let mut cache = WindowCaptureModeCache::default();
+        let visible_calls = Cell::new(0);
         let frame = capture_window_frame_with_sources(
             123,
             Some(&mut cache),
-            |_| Ok(Some(solid(2, 2, [10, 20, 30]))),
+            |_| {
+                visible_calls.set(visible_calls.get() + 1);
+                Ok(Some(solid(2, 2, [10, 20, 30])))
+            },
             |_| Ok(Some(solid(2, 2, [40, 50, 60]))),
         )
         .unwrap()
         .unwrap();
 
         assert_eq!(frame, solid(2, 2, [40, 50, 60]));
+        assert_eq!(visible_calls.get(), 0);
         assert!(!cache.is_visible_mode(123));
+    }
+
+    #[test]
+    fn cached_visible_mode_skips_printwindow_until_reprobe() {
+        let mut cache = WindowCaptureModeCache::default();
+        cache.set_visible_mode(123);
+        let print_calls = Cell::new(0);
+
+        let frame = capture_window_frame_with_sources(
+            123,
+            Some(&mut cache),
+            |_| Ok(Some(solid(2, 2, [10, 20, 30]))),
+            |_| {
+                print_calls.set(print_calls.get() + 1);
+                Ok(Some(solid(2, 2, [40, 50, 60])))
+            },
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(frame, solid(2, 2, [10, 20, 30]));
+        assert_eq!(print_calls.get(), 0);
+        assert!(cache.is_visible_mode(123));
     }
 
     #[test]

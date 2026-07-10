@@ -1,6 +1,8 @@
 use std::{
     env,
+    io::Cursor,
     sync::atomic::{AtomicBool, Ordering},
+    sync::OnceLock,
     thread,
     time::Duration,
 };
@@ -19,7 +21,12 @@ pub const TRAY_MENU_SHOW_LABEL: &str = "Show Tauri";
 pub const TRAY_MENU_EXIT_LABEL: &str = "Exit Tauri";
 pub const START_MINIMIZED_ARG: &str = "--start-minimized";
 
-const ICON_SIZE: u32 = 32;
+const ICON_SIZE: u32 = 64;
+const APP_ICON_ICO: &[u8] = include_bytes!("../icons/icon.ico");
+const MONITORING_GREEN: [u8; 3] = [34, 197, 94];
+const WHITE_GLYPH_CHANNEL_FLOOR: u8 = 180;
+
+static BASE_TRAY_ICON_RGBA: OnceLock<Vec<u8>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayMenuAction {
@@ -218,35 +225,147 @@ pub fn tray_monitoring_presentation(monitoring: bool) -> TrayMonitoringPresentat
 }
 
 pub fn tray_icon_rgba(monitoring: bool) -> Vec<u8> {
-    let mut rgba = vec![0; (ICON_SIZE * ICON_SIZE * 4) as usize];
-    let accent = if monitoring {
-        [39, 174, 96, 255]
-    } else {
-        [78, 91, 110, 255]
-    };
-    for y in 0..ICON_SIZE {
-        for x in 0..ICON_SIZE {
-            let dx = x as i32 - 16;
-            let dy = y as i32 - 16;
-            let idx = ((y * ICON_SIZE + x) * 4) as usize;
-            if dx * dx + dy * dy <= 14 * 14 {
-                let shade = if (8..=23).contains(&x) && (8..=23).contains(&y) {
-                    accent
-                } else {
-                    [24, 30, 38, 255]
-                };
-                rgba[idx..idx + 4].copy_from_slice(&shade);
-            }
-            if monitoring {
-                let dot_dx = x as i32 - 23;
-                let dot_dy = y as i32 - 9;
-                if dot_dx * dot_dx + dot_dy * dot_dy <= 5 * 5 {
-                    rgba[idx..idx + 4].copy_from_slice(&[212, 255, 225, 255]);
-                }
-            }
+    let mut rgba = base_tray_icon_rgba().to_vec();
+    if !monitoring {
+        return rgba;
+    }
+
+    for pixel in rgba.chunks_exact_mut(4) {
+        if pixel[3] > 0
+            && pixel[0] >= WHITE_GLYPH_CHANNEL_FLOOR
+            && pixel[1] >= WHITE_GLYPH_CHANNEL_FLOOR
+            && pixel[2] >= WHITE_GLYPH_CHANNEL_FLOOR
+        {
+            pixel[..3].copy_from_slice(&MONITORING_GREEN);
         }
     }
     rgba
+}
+
+fn base_tray_icon_rgba() -> &'static [u8] {
+    BASE_TRAY_ICON_RGBA
+        .get_or_init(|| {
+            decode_ico_png_layer(APP_ICON_ICO, ICON_SIZE, ICON_SIZE)
+                .expect("embedded application icon must contain a valid 64x64 PNG layer")
+        })
+        .as_slice()
+}
+
+fn decode_ico_png_layer(
+    ico: &[u8],
+    target_width: u32,
+    target_height: u32,
+) -> Result<Vec<u8>, String> {
+    if ico.len() < 6 || read_u16_le(ico, 0)? != 0 || read_u16_le(ico, 2)? != 1 {
+        return Err("invalid ICO header".to_string());
+    }
+
+    let entry_count = read_u16_le(ico, 4)? as usize;
+    let mut selected: Option<(u16, usize, usize)> = None;
+    for entry_index in 0..entry_count {
+        let entry_offset = 6 + entry_index * 16;
+        if entry_offset + 16 > ico.len() {
+            return Err("truncated ICO directory".to_string());
+        }
+        let width = ico_dimension(ico[entry_offset]);
+        let height = ico_dimension(ico[entry_offset + 1]);
+        if width != target_width || height != target_height {
+            continue;
+        }
+
+        let bit_count = read_u16_le(ico, entry_offset + 6)?;
+        let image_size = read_u32_le(ico, entry_offset + 8)? as usize;
+        let image_offset = read_u32_le(ico, entry_offset + 12)? as usize;
+        let image_end = image_offset
+            .checked_add(image_size)
+            .ok_or_else(|| "ICO image range overflow".to_string())?;
+        if image_end > ico.len() {
+            return Err("ICO image range exceeds file size".to_string());
+        }
+        if !ico[image_offset..image_end].starts_with(b"\x89PNG\r\n\x1a\n") {
+            continue;
+        }
+        if selected.is_none_or(|(selected_bits, _, _)| bit_count > selected_bits) {
+            selected = Some((bit_count, image_offset, image_end));
+        }
+    }
+
+    let (_, image_offset, image_end) = selected.ok_or_else(|| {
+        format!("ICO does not contain a {target_width}x{target_height} PNG layer")
+    })?;
+    decode_png_rgba(&ico[image_offset..image_end], target_width, target_height)
+}
+
+fn decode_png_rgba(
+    png_bytes: &[u8],
+    expected_width: u32,
+    expected_height: u32,
+) -> Result<Vec<u8>, String> {
+    let mut decoder = png::Decoder::new(Cursor::new(png_bytes));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder
+        .read_info()
+        .map_err(|error| format!("failed to read PNG metadata: {error}"))?;
+    let mut decoded = vec![0; reader.output_buffer_size()];
+    let info = reader
+        .next_frame(&mut decoded)
+        .map_err(|error| format!("failed to decode PNG: {error}"))?;
+    if info.width != expected_width || info.height != expected_height {
+        return Err(format!(
+            "unexpected PNG dimensions: {}x{}",
+            info.width, info.height
+        ));
+    }
+    let decoded = &decoded[..info.buffer_size()];
+    let pixel_count = (info.width * info.height) as usize;
+    let mut rgba = Vec::with_capacity(pixel_count * 4);
+    match info.color_type {
+        png::ColorType::Rgba => rgba.extend_from_slice(decoded),
+        png::ColorType::Rgb => {
+            for pixel in decoded.chunks_exact(3) {
+                rgba.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
+            }
+        }
+        png::ColorType::GrayscaleAlpha => {
+            for pixel in decoded.chunks_exact(2) {
+                rgba.extend_from_slice(&[pixel[0], pixel[0], pixel[0], pixel[1]]);
+            }
+        }
+        png::ColorType::Grayscale => {
+            for &value in decoded {
+                rgba.extend_from_slice(&[value, value, value, 255]);
+            }
+        }
+        png::ColorType::Indexed => {
+            return Err("PNG palette was not expanded during decoding".to_string());
+        }
+    }
+    if rgba.len() != pixel_count * 4 {
+        return Err("decoded PNG buffer has an unexpected length".to_string());
+    }
+    Ok(rgba)
+}
+
+fn ico_dimension(value: u8) -> u32 {
+    if value == 0 {
+        256
+    } else {
+        value as u32
+    }
+}
+
+fn read_u16_le(bytes: &[u8], offset: usize) -> Result<u16, String> {
+    let value = bytes
+        .get(offset..offset + 2)
+        .ok_or_else(|| "truncated ICO integer".to_string())?;
+    Ok(u16::from_le_bytes([value[0], value[1]]))
+}
+
+fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32, String> {
+    let value = bytes
+        .get(offset..offset + 4)
+        .ok_or_else(|| "truncated ICO integer".to_string())?;
+    Ok(u32::from_le_bytes([value[0], value[1], value[2], value[3]]))
 }
 
 #[cfg(test)]
@@ -325,13 +444,32 @@ mod tests {
     fn tray_icon_pixels_change_with_monitoring_state() {
         let ready = tray_icon_rgba(false);
         let monitoring = tray_icon_rgba(true);
-        assert_eq!(ready.len(), 32 * 32 * 4);
+        assert_eq!(ready.len(), 64 * 64 * 4);
         assert_eq!(monitoring.len(), ready.len());
         assert_ne!(ready, monitoring);
+        assert!(ready.chunks_exact(4).any(|pixel| pixel[3] == 0));
         assert!(ready.chunks_exact(4).any(|pixel| pixel[3] == 255));
         assert!(monitoring
             .chunks_exact(4)
-            .any(|pixel| pixel == [212, 255, 225, 255]));
+            .any(|pixel| pixel == [34, 197, 94, 255]));
+
+        let changed_pixels: Vec<usize> = ready
+            .chunks_exact(4)
+            .zip(monitoring.chunks_exact(4))
+            .enumerate()
+            .filter_map(|(index, (ready_pixel, monitoring_pixel))| {
+                (ready_pixel != monitoring_pixel).then_some(index)
+            })
+            .collect();
+        assert!(changed_pixels.len() > 300);
+        assert!(changed_pixels.iter().any(|index| index % 64 < 24));
+        assert!(changed_pixels.iter().any(|index| index % 64 > 40));
+        assert!(changed_pixels.iter().any(|index| index / 64 < 24));
+        assert!(changed_pixels.iter().any(|index| index / 64 > 40));
+        assert!(ready
+            .chunks_exact(4)
+            .zip(monitoring.chunks_exact(4))
+            .all(|(ready_pixel, monitoring_pixel)| ready_pixel[3] == monitoring_pixel[3]));
     }
 
     #[test]
@@ -341,10 +479,10 @@ mod tests {
 
         assert_eq!(ready.tooltip, "Screen Watch OCR Tauri - Ready");
         assert_eq!(monitoring.tooltip, "Screen Watch OCR Tauri - Monitoring");
-        assert_eq!((ready.width, ready.height), (32, 32));
-        assert_eq!((monitoring.width, monitoring.height), (32, 32));
-        assert_eq!(ready.rgba.len(), 32 * 32 * 4);
-        assert_eq!(monitoring.rgba.len(), 32 * 32 * 4);
+        assert_eq!((ready.width, ready.height), (64, 64));
+        assert_eq!((monitoring.width, monitoring.height), (64, 64));
+        assert_eq!(ready.rgba.len(), 64 * 64 * 4);
+        assert_eq!(monitoring.rgba.len(), 64 * 64 * 4);
         assert_ne!(ready.rgba, monitoring.rgba);
     }
 }

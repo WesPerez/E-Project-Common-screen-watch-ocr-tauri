@@ -25,6 +25,7 @@ const SPARSE_REFINE_TEMPLATE_AREA: u64 = 1024;
 const SPARSE_REFINE_CANDIDATES: usize = 32;
 const REFINE_MARGIN: u32 = 16;
 const EXACT_GRAY_MAX_POSITIONS: u64 = 100_000;
+const EXACT_INDEX_MAX_BUCKET_POSITIONS: usize = 250_000;
 const PERFECT_SCORE_THRESHOLD: f32 = 1.0 - 1e-6;
 
 #[derive(Debug, Error)]
@@ -102,6 +103,11 @@ struct ExactGrayAnchor {
     x: u32,
     y: u32,
     value: f32,
+}
+
+struct ExactGrayIndex {
+    positions: [Vec<u32>; 256],
+    saturated: [bool; 256],
 }
 
 impl Eq for CandidateLoc {}
@@ -603,8 +609,13 @@ pub fn detect_template_scaled(
 ) -> Option<Match> {
     let base_template = GrayFrame::from_rgb(template);
     let frame_cache = GrayFrameCache::from_rgb(frame);
-    let hit =
-        find_template_scaled_with_cache(&frame_cache, &base_template, scales, Some(threshold))?;
+    let hit = find_template_scaled_with_cache(
+        &frame_cache,
+        &base_template,
+        scales,
+        Some(threshold),
+        None,
+    )?;
     if hit.score < threshold {
         return None;
     }
@@ -629,7 +640,7 @@ pub fn find_template_scaled(
     }
     let base_template = GrayFrame::from_rgb(template);
     let frame_cache = GrayFrameCache::from_rgb(frame);
-    find_template_scaled_with_cache(&frame_cache, &base_template, scales, None)
+    find_template_scaled_with_cache(&frame_cache, &base_template, scales, None, None)
 }
 
 fn find_template_scaled_with_cache(
@@ -637,6 +648,7 @@ fn find_template_scaled_with_cache(
     base_template: &GrayFrame,
     scales: &[f64],
     threshold: Option<f32>,
+    exact_index: Option<&ExactGrayIndex>,
 ) -> Option<TemplateMatch> {
     let mut best: Option<TemplateMatch> = None;
     for scale in scales {
@@ -644,6 +656,13 @@ fn find_template_scaled_with_cache(
             continue;
         }
         let scaled_template = base_template.resize_by(*scale)?;
+        if (*scale - 1.0).abs() < f64::EPSILON {
+            if let Some(hit) =
+                exact_index.and_then(|index| index.find(frame_cache.full(), &scaled_template))
+            {
+                return Some(hit);
+            }
+        }
         let hit = find_template_best_gray_adaptive(frame_cache, &scaled_template, threshold).map(
             |mut hit| {
                 hit.scale = (*scale * 1_000_000.0).round() / 1_000_000.0;
@@ -729,23 +748,35 @@ fn run_template_jobs(
         return Vec::new();
     }
     let frame_cache = GrayFrameCache::from_rgb(frame);
+    let exact_index = ExactGrayIndex::for_jobs(frame_cache.full(), jobs);
     let worker_count = template_worker_count(template_workers, jobs.len());
     if worker_count <= 1 {
         return jobs
             .iter()
-            .map(|(index, target)| (*index, detect_prepared_template(&frame_cache, target)))
+            .map(|(index, target)| {
+                (
+                    *index,
+                    detect_prepared_template(&frame_cache, exact_index.as_ref(), target),
+                )
+            })
             .collect();
     }
 
     let chunk_size = jobs.len().div_ceil(worker_count);
     let frame_cache = &frame_cache;
+    let exact_index = exact_index.as_ref();
     thread::scope(|scope| {
         let mut handles = Vec::new();
         for chunk in jobs.chunks(chunk_size) {
             handles.push(scope.spawn(move || {
                 chunk
                     .iter()
-                    .map(|(index, target)| (*index, detect_prepared_template(&frame_cache, target)))
+                    .map(|(index, target)| {
+                        (
+                            *index,
+                            detect_prepared_template(frame_cache, exact_index, target),
+                        )
+                    })
                     .collect::<Vec<_>>()
             }));
         }
@@ -770,6 +801,7 @@ fn template_worker_count(template_workers: usize, template_job_count: usize) -> 
 
 fn detect_prepared_template(
     frame_cache: &GrayFrameCache,
+    exact_index: Option<&ExactGrayIndex>,
     target: &PreparedTarget,
 ) -> Option<Match> {
     let PreparedTarget::Template {
@@ -784,7 +816,13 @@ fn detect_prepared_template(
     };
     let trace = std::env::var_os("SCREENWATCH_TEMPLATE_TRACE").is_some();
     let started = trace.then(Instant::now);
-    let hit = find_template_scaled_with_cache(frame_cache, template, scales, Some(*threshold));
+    let hit = find_template_scaled_with_cache(
+        frame_cache,
+        template,
+        scales,
+        Some(*threshold),
+        exact_index,
+    );
     if let Some(started) = started {
         let score = hit.as_ref().map(|item| item.score).unwrap_or(-1.0);
         eprintln!(
@@ -1102,6 +1140,98 @@ fn exact_match_samples(template: &GrayFrame) -> Vec<(u32, u32, f32)> {
         }
     }
     samples
+}
+
+impl ExactGrayIndex {
+    fn for_jobs(frame: &GrayFrame, jobs: &[(usize, &PreparedTarget)]) -> Option<Self> {
+        let mut wanted = [false; 256];
+        for (_, target) in jobs {
+            let PreparedTarget::Template {
+                scales, template, ..
+            } = target
+            else {
+                continue;
+            };
+            if !scales
+                .iter()
+                .any(|scale| (*scale - 1.0).abs() < f64::EPSILON)
+                || !should_try_exact_gray(frame, template)
+            {
+                continue;
+            }
+            if let Some(anchor) = exact_match_anchor(template) {
+                wanted[gray_bucket(anchor.value)] = true;
+            }
+        }
+        if !wanted.iter().any(|value| *value) {
+            return None;
+        }
+
+        let mut index = Self {
+            positions: std::array::from_fn(|_| Vec::new()),
+            saturated: [false; 256],
+        };
+        for (position, value) in frame.pixels.iter().enumerate() {
+            let bucket = gray_bucket(*value);
+            if !wanted[bucket] || index.saturated[bucket] {
+                continue;
+            }
+            let positions = &mut index.positions[bucket];
+            if positions.len() >= EXACT_INDEX_MAX_BUCKET_POSITIONS {
+                positions.clear();
+                index.saturated[bucket] = true;
+                continue;
+            }
+            positions.push(position as u32);
+        }
+        Some(index)
+    }
+
+    fn find(&self, frame: &GrayFrame, template: &GrayFrame) -> Option<TemplateMatch> {
+        if !should_try_exact_gray(frame, template) {
+            return None;
+        }
+        let anchor = exact_match_anchor(template)?;
+        let bucket = gray_bucket(anchor.value);
+        if self.saturated[bucket] {
+            return None;
+        }
+        let samples = exact_match_samples(template);
+        for position in &self.positions[bucket] {
+            let anchor_x = *position % frame.width;
+            let anchor_y = *position / frame.width;
+            let Some(left) = anchor_x.checked_sub(anchor.x) else {
+                continue;
+            };
+            let Some(top) = anchor_y.checked_sub(anchor.y) else {
+                continue;
+            };
+            if left + template.width > frame.width || top + template.height > frame.height {
+                continue;
+            }
+            if frame.pixels[*position as usize] != anchor.value {
+                continue;
+            }
+            if samples
+                .iter()
+                .any(|(x, y, value)| frame.pixel(left + *x, top + *y) != *value)
+            {
+                continue;
+            }
+            if gray_template_matches_at(frame, template, left, top) {
+                return Some(TemplateMatch {
+                    score: 1.0,
+                    box_xyxy: [left, top, left + template.width, top + template.height],
+                    scale: 1.0,
+                });
+            }
+        }
+        None
+    }
+}
+
+fn gray_bucket(value: f32) -> usize {
+    value.clamp(0.0, 255.0) as usize
 }
 
 fn gray_template_matches_at(frame: &GrayFrame, template: &GrayFrame, left: u32, top: u32) -> bool {

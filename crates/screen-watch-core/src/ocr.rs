@@ -508,7 +508,7 @@ fn native_ocr_worker_recognize(
     }
 
     match state {
-        NativeOcrEngineState::Ready(engine) => recognize_with_native_engine(engine, &frame),
+        NativeOcrEngineState::Ready(engine) => recognize_with_native_engine(engine, frame),
         NativeOcrEngineState::Failed(message) => Err(OcrError::Unavailable(message.clone())),
         NativeOcrEngineState::Uninitialized => {
             unreachable!("OCR engine state is initialized above")
@@ -529,7 +529,7 @@ fn build_native_ocr_engine(model_dir: &Path) -> Result<pure_onnx_ocr::OcrEngine,
 #[cfg(feature = "ocr")]
 fn recognize_with_native_engine(
     engine: &pure_onnx_ocr::OcrEngine,
-    frame: &RgbFrame,
+    frame: RgbFrame,
 ) -> Result<Vec<OcrTextRow>, OcrError> {
     let image = rgb_frame_to_dynamic_image(frame)?;
     let rows = engine
@@ -552,9 +552,9 @@ fn recognize_with_native_engine(
 }
 
 #[cfg(feature = "ocr")]
-fn rgb_frame_to_dynamic_image(frame: &RgbFrame) -> Result<image::DynamicImage, OcrError> {
-    let image = image::RgbImage::from_raw(frame.width, frame.height, frame.pixels.clone())
-        .ok_or_else(|| {
+fn rgb_frame_to_dynamic_image(frame: RgbFrame) -> Result<image::DynamicImage, OcrError> {
+    let image =
+        image::RgbImage::from_raw(frame.width, frame.height, frame.pixels).ok_or_else(|| {
             OcrError::Unavailable("OCR frame has invalid RGB buffer size".to_string())
         })?;
     Ok(image::DynamicImage::ImageRgb8(image))

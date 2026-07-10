@@ -13,6 +13,7 @@ use screen_watch_core::{
 };
 use serde::Serialize;
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -139,6 +140,7 @@ impl MonitorSessionState {
         self.request_stop_current_worker(START_STOP_JOIN_GRACE, false)?;
 
         let poll_interval = poll_interval_duration(config.poll_interval_seconds);
+        let min_idle = min_idle_duration(&config);
         let mut engine = ScanEngine::new_with_ocr_backend(
             config,
             &base_dir,
@@ -186,6 +188,7 @@ impl MonitorSessionState {
                 &mut engine,
                 sources,
                 poll_interval,
+                min_idle,
                 thread_stop,
                 snapshot,
                 active_generation,
@@ -299,6 +302,7 @@ fn monitor_loop(
     engine: &mut ScanEngine,
     mut sources: MonitorSources,
     poll_interval: Duration,
+    min_idle: Duration,
     stop: Arc<AtomicBool>,
     snapshot: Arc<Mutex<MonitorSessionSnapshot>>,
     active_generation: Arc<AtomicU64>,
@@ -375,7 +379,7 @@ fn monitor_loop(
             event_sink.emit(event);
         }
         sleep_interruptibly(
-            remaining_poll_interval(poll_interval, tick_started.elapsed()),
+            remaining_poll_interval(poll_interval, tick_started.elapsed()).max(min_idle),
             &stop,
         );
     }
@@ -445,15 +449,18 @@ impl MonitorSources {
         Ok(())
     }
 
-    fn concrete_windows(&self) -> impl Iterator<Item = &WindowConfig> {
+    fn concrete_windows(&self) -> Vec<&WindowConfig> {
+        let mut seen = HashSet::new();
         self.direct_windows
             .iter()
             .chain(self.remembered_windows.iter())
             .filter(|window| window.hwnd.is_some())
+            .filter(|window| seen.insert(window.hwnd.unwrap()))
+            .collect()
     }
 
     fn window_count(&self) -> usize {
-        self.concrete_windows().count()
+        self.concrete_windows().len()
     }
 
     fn skipped_windows(&self) -> usize {
@@ -638,6 +645,16 @@ fn poll_interval_duration(seconds: f64) -> Duration {
     Duration::from_secs_f64(seconds).max(MIN_POLL_INTERVAL)
 }
 
+fn min_idle_duration(config: &WatchConfig) -> Duration {
+    config
+        .extra
+        .get("min_idle_seconds")
+        .and_then(|value| value.as_f64())
+        .filter(|seconds| seconds.is_finite() && *seconds > 0.0)
+        .map(Duration::from_secs_f64)
+        .unwrap_or(Duration::ZERO)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct MonitorClock {
     now_seconds: f64,
@@ -661,10 +678,11 @@ fn clock_now() -> MonitorClock {
 #[cfg(test)]
 mod tests {
     use super::{
-        alerted_target_ids, mark_stopped, poll_interval_duration, record_monitor_tick,
-        remaining_poll_interval, started_event, stopped_event, window_source_name, AlarmBeepState,
-        MonitorClock, MonitorSessionEventKind, MonitorSessionSnapshot, MonitorSessionState,
-        MonitorSources, MonitorWorker, MIN_POLL_INTERVAL, START_STOP_JOIN_GRACE,
+        alerted_target_ids, mark_stopped, min_idle_duration, poll_interval_duration,
+        record_monitor_tick, remaining_poll_interval, started_event, stopped_event,
+        window_source_name, AlarmBeepState, MonitorClock, MonitorSessionEventKind,
+        MonitorSessionSnapshot, MonitorSessionState, MonitorSources, MonitorWorker,
+        MIN_POLL_INTERVAL, START_STOP_JOIN_GRACE,
     };
     use screen_watch_core::{
         config::{WatchConfig, WindowAppConfig, WindowConfig},
@@ -711,6 +729,13 @@ mod tests {
             remaining_poll_interval(Duration::from_millis(1200), Duration::from_millis(1500)),
             Duration::ZERO
         );
+    }
+
+    #[test]
+    fn profile_min_idle_is_applied_from_config_extra() {
+        let config =
+            WatchConfig::from_json_str(r#"{"targets":[],"min_idle_seconds":0.08}"#).unwrap();
+        assert_eq!(min_idle_duration(&config), Duration::from_millis(80));
     }
 
     #[test]

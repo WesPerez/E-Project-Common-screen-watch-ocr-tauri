@@ -13,7 +13,7 @@ if (-not $PythonExePath) {
     $PythonExePath = Join-Path $ProjectRootPath "..\screen-watch-ocr\dist\ScreenWatchOCR.exe"
 }
 if (-not $TauriExePath) {
-    $TauriExePath = Join-Path $ProjectRootPath "release-single\ScreenWatchOCRTauri.exe"
+    $TauriExePath = Join-Path $ProjectRootPath "target\release\screen-watch-ocr-tauri.exe"
 }
 if (-not $ResultPath) {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
