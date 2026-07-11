@@ -21,12 +21,16 @@ pub const TRAY_MENU_SHOW_LABEL: &str = "Show Tauri";
 pub const TRAY_MENU_EXIT_LABEL: &str = "Exit Tauri";
 pub const START_MINIMIZED_ARG: &str = "--start-minimized";
 
-const ICON_SIZE: u32 = 64;
+const ICON_SIZE: u32 = 48;
+const TRAY_SOURCE_SIZE: u32 = 128;
+const TRAY_SOURCE_CROP_SIZE: u32 = 96;
+const WINDOW_ICON_SIZE: u32 = 256;
 const APP_ICON_ICO: &[u8] = include_bytes!("../icons/icon.ico");
 const MONITORING_GREEN: [u8; 3] = [34, 197, 94];
 const WHITE_GLYPH_CHANNEL_FLOOR: u8 = 180;
 
 static BASE_TRAY_ICON_RGBA: OnceLock<Vec<u8>> = OnceLock::new();
+static WINDOW_ICON_RGBA: OnceLock<Vec<u8>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayMenuAction {
@@ -242,13 +246,52 @@ pub fn tray_icon_rgba(monitoring: bool) -> Vec<u8> {
     rgba
 }
 
+pub fn app_window_icon_image() -> Image<'static> {
+    Image::new_owned(
+        window_icon_rgba().to_vec(),
+        WINDOW_ICON_SIZE,
+        WINDOW_ICON_SIZE,
+    )
+}
+
 fn base_tray_icon_rgba() -> &'static [u8] {
     BASE_TRAY_ICON_RGBA
         .get_or_init(|| {
-            decode_ico_png_layer(APP_ICON_ICO, ICON_SIZE, ICON_SIZE)
-                .expect("embedded application icon must contain a valid 64x64 PNG layer")
+            let source = decode_ico_png_layer(APP_ICON_ICO, TRAY_SOURCE_SIZE, TRAY_SOURCE_SIZE)
+                .expect("embedded application icon must contain a valid 128x128 PNG layer");
+            zoom_tray_icon_rgba(source).expect("tray icon crop and resize must remain valid")
         })
         .as_slice()
+}
+
+fn window_icon_rgba() -> &'static [u8] {
+    WINDOW_ICON_RGBA
+        .get_or_init(|| {
+            decode_ico_png_layer(APP_ICON_ICO, WINDOW_ICON_SIZE, WINDOW_ICON_SIZE)
+                .expect("embedded application icon must contain a valid 256x256 PNG layer")
+        })
+        .as_slice()
+}
+
+fn zoom_tray_icon_rgba(source: Vec<u8>) -> Result<Vec<u8>, String> {
+    let source = image::RgbaImage::from_raw(TRAY_SOURCE_SIZE, TRAY_SOURCE_SIZE, source)
+        .ok_or_else(|| "tray source icon has an unexpected RGBA length".to_string())?;
+    let crop_offset = (TRAY_SOURCE_SIZE - TRAY_SOURCE_CROP_SIZE) / 2;
+    let cropped = image::imageops::crop_imm(
+        &source,
+        crop_offset,
+        crop_offset,
+        TRAY_SOURCE_CROP_SIZE,
+        TRAY_SOURCE_CROP_SIZE,
+    )
+    .to_image();
+    Ok(image::imageops::resize(
+        &cropped,
+        ICON_SIZE,
+        ICON_SIZE,
+        image::imageops::FilterType::Lanczos3,
+    )
+    .into_raw())
 }
 
 fn decode_ico_png_layer(
@@ -373,8 +416,8 @@ mod tests {
     use super::{
         has_start_minimized_arg, menu_action_for_id, should_hide_close_to_tray,
         should_hide_on_start, tray_icon_click_action, tray_icon_rgba, tray_monitoring_presentation,
-        tray_tooltip, START_MINIMIZED_ARG, TRAY_MENU_EXIT_ID, TRAY_MENU_EXIT_LABEL,
-        TRAY_MENU_SHOW_ID, TRAY_MENU_SHOW_LABEL,
+        tray_tooltip, window_icon_rgba, START_MINIMIZED_ARG, TRAY_MENU_EXIT_ID,
+        TRAY_MENU_EXIT_LABEL, TRAY_MENU_SHOW_ID, TRAY_MENU_SHOW_LABEL,
     };
     use tauri::tray::{MouseButton, MouseButtonState};
 
@@ -444,7 +487,7 @@ mod tests {
     fn tray_icon_pixels_change_with_monitoring_state() {
         let ready = tray_icon_rgba(false);
         let monitoring = tray_icon_rgba(true);
-        assert_eq!(ready.len(), 64 * 64 * 4);
+        assert_eq!(ready.len(), 48 * 48 * 4);
         assert_eq!(monitoring.len(), ready.len());
         assert_ne!(ready, monitoring);
         assert!(ready.chunks_exact(4).any(|pixel| pixel[3] == 0));
@@ -461,11 +504,11 @@ mod tests {
                 (ready_pixel != monitoring_pixel).then_some(index)
             })
             .collect();
-        assert!(changed_pixels.len() > 300);
-        assert!(changed_pixels.iter().any(|index| index % 64 < 24));
-        assert!(changed_pixels.iter().any(|index| index % 64 > 40));
-        assert!(changed_pixels.iter().any(|index| index / 64 < 24));
-        assert!(changed_pixels.iter().any(|index| index / 64 > 40));
+        assert!(changed_pixels.len() > 150);
+        assert!(changed_pixels.iter().any(|index| index % 48 < 18));
+        assert!(changed_pixels.iter().any(|index| index % 48 > 30));
+        assert!(changed_pixels.iter().any(|index| index / 48 < 18));
+        assert!(changed_pixels.iter().any(|index| index / 48 > 30));
         assert!(ready
             .chunks_exact(4)
             .zip(monitoring.chunks_exact(4))
@@ -479,10 +522,18 @@ mod tests {
 
         assert_eq!(ready.tooltip, "Screen Watch OCR Tauri - Ready");
         assert_eq!(monitoring.tooltip, "Screen Watch OCR Tauri - Monitoring");
-        assert_eq!((ready.width, ready.height), (64, 64));
-        assert_eq!((monitoring.width, monitoring.height), (64, 64));
-        assert_eq!(ready.rgba.len(), 64 * 64 * 4);
-        assert_eq!(monitoring.rgba.len(), 64 * 64 * 4);
+        assert_eq!((ready.width, ready.height), (48, 48));
+        assert_eq!((monitoring.width, monitoring.height), (48, 48));
+        assert_eq!(ready.rgba.len(), 48 * 48 * 4);
+        assert_eq!(monitoring.rgba.len(), 48 * 48 * 4);
         assert_ne!(ready.rgba, monitoring.rgba);
+    }
+
+    #[test]
+    fn taskbar_icon_uses_native_256_layer() {
+        let rgba = window_icon_rgba();
+        assert_eq!(rgba.len(), 256 * 256 * 4);
+        assert!(rgba.chunks_exact(4).any(|pixel| pixel[3] == 0));
+        assert!(rgba.chunks_exact(4).any(|pixel| pixel[3] == 255));
     }
 }

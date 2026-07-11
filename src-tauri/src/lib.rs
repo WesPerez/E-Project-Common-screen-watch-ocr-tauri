@@ -1485,6 +1485,9 @@ pub fn run() {
             if let Ok(mut guard) = wake_target_for_setup.lock() {
                 *guard = Some(app.handle().clone());
             }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_icon(tray::app_window_icon_image());
+            }
             window_layout::apply_saved_window_geometry(app.handle());
             let tray_available = match tray::install_tray(app.handle()) {
                 Ok(()) => {
